@@ -74,7 +74,7 @@ cadastral district directly); `TrackingViewModel.loadBundledGraph()` fills
 it in as a second pass by loading `App/Resources/prague_districts.json`
 (fetched via `Scripts/fetch_prague_districts.sh`) and running
 `DistrictTagger.tag`. That pulls Prague's cadastral areas as OSM
-administrative boundary relations (`admin_level=9`), reassembles their
+`boundary=cadastral` relations (112 katastrální území), reassembles their
 member ways into closed rings with `RingAssembler` (boundaries are usually
 split across several way fragments in mixed order/direction), and does a
 ray-casting point-in-polygon test using each segment's midpoint as its

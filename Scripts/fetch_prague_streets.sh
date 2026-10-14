@@ -28,7 +28,7 @@ out body;
 out skel qt;'
 
 echo "Querying Overpass API for Prague's street network (this can take a couple of minutes)..."
-curl -sS --fail --data-urlencode "data=${QUERY}" https://overpass-api.de/api/interpreter -o "$OUT"
+curl -sS --fail --retry 5 --retry-delay 30 --retry-all-errors -A "prague-street-tracker/0.1 (+https://github.com/krystofskala/prague-tracking)" --data-urlencode "data=${QUERY}" "${OVERPASS_URL:-https://overpass-api.de/api/interpreter}" -o "$OUT"
 
 echo "Saved to $OUT ($(du -h "$OUT" | cut -f1))"
 echo

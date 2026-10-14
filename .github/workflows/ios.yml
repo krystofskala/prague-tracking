@@ -3,14 +3,18 @@
 # jako iOS build Opentify.
 #
 # Spuštění: tag `ios-*` / `app-*` nebo ručně (Actions › iOS build › Run).
-# Výsledek: artefakt PragueStreetTracker-ipa. Release + zdroj pro SideStore
-# se přidá až po schválení první verze.
+# Výsledek: GitHub Release s PragueStreetTracker.ipa a nový source.json ve
+# větvi `altstore` -- SideStore update nabídne sám. Každé spuštění = nová
+# verze pro telefon, proto jen na Kryštofův pokyn.
 name: iOS build
 
 on:
   workflow_dispatch:
   push:
     tags: ['ios-*', 'app-*']
+
+permissions:
+  contents: write
 
 concurrency:
   group: ios-build
@@ -57,3 +61,33 @@ jobs:
           name: PragueStreetTracker-ipa
           path: PragueStreetTracker.ipa
           retention-days: 30
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('ios-build-{0}', github.run_number) }}
+          files: PragueStreetTracker.ipa
+          prerelease: true
+          body: |
+            Nepodepsaná appka pro iPhone (verze 0.1.${{ github.run_number }}). Aktualizace chodí samy přes zdroj
+            v SideStore: https://raw.githubusercontent.com/${{ github.repository }}/altstore/source.json
+
+      - name: Zdroj pro SideStore (source.json)
+        run: |
+          TAG="${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('ios-build-{0}', github.run_number) }}"
+          URL="https://github.com/${{ github.repository }}/releases/download/$TAG/PragueStreetTracker.ipa"
+          SIZE=$(stat -f%z PragueStreetTracker.ipa)
+          python3 .github/scripts/altstore_source.py "0.1.${{ github.run_number }}" "$URL" "$SIZE" /tmp/source.json "${{ github.sha }}"
+          git config user.name "prague-tracking-ci"
+          git config user.email "prague-tracking-ci@users.noreply.github.com"
+          git fetch origin altstore || true
+          if git rev-parse --verify origin/altstore >/dev/null 2>&1; then
+            git checkout -f -B altstore origin/altstore
+          else
+            git checkout --orphan altstore
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+          cp /tmp/source.json source.json
+          git add source.json
+          git commit -m "Prague Streets 0.1.${{ github.run_number }}" || echo "beze změny"
+          git push origin altstore

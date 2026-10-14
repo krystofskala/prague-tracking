@@ -1,0 +1,59 @@
+# Appka pro iPhone bez Macu: macOS runner postaví NEPODEPSANÝ .ipa,
+# podepíše ho až SideStore v telefonu (bezplatné Apple ID). Stejný postup
+# jako iOS build Opentify.
+#
+# Spuštění: tag `ios-*` / `app-*` nebo ručně (Actions › iOS build › Run).
+# Výsledek: artefakt PragueStreetTracker-ipa. Release + zdroj pro SideStore
+# se přidá až po schválení první verze.
+name: iOS build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['ios-*', 'app-*']
+
+concurrency:
+  group: ios-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: XcodeGen
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          xcodebuild -version
+
+      - name: Build pro iPhone (bez podpisu)
+        run: >
+          xcodebuild build
+          -project PragueStreetTracker.xcodeproj
+          -scheme PragueStreetTracker
+          -configuration Release
+          -sdk iphoneos
+          -destination 'generic/platform=iOS'
+          -derivedDataPath build
+          MARKETING_VERSION=0.1.${{ github.run_number }}
+          CURRENT_PROJECT_VERSION=${{ github.run_number }}
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Zabalit .ipa
+        run: |
+          APP=build/Build/Products/Release-iphoneos/PragueStreetTracker.app
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist"
+          codesign --force --sign - "$APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry PragueStreetTracker.ipa Payload
+          ls -lh PragueStreetTracker.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PragueStreetTracker-ipa
+          path: PragueStreetTracker.ipa
+          retention-days: 30

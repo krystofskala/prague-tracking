@@ -19,6 +19,9 @@ targets:
     info:
       path: Generated/Info.plist
       properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleDisplayName: "Prague Streets"
         UILaunchScreen: {}
         NSLocationWhenInUseUsageDescription: "Prague Street Tracker uses your location to record which streets you've walked. Your location data is stored only on this device and is never sent anywhere."
         NSLocationAlwaysAndWhenInUseUsageDescription: "Prague Street Tracker needs background location access to keep tracking the streets you walk while your phone is locked or you're using another app. Your location data is stored only on this device and is never sent anywhere."
@@ -30,3 +33,5 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.krystofskala.praguestreettracker
         SWIFT_VERSION: "5.9"
         TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"

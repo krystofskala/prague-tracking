@@ -51,11 +51,17 @@ public enum DistrictTagger {
     /// whose representative point falls inside one of `boundaries`. Segments
     /// that don't match any boundary are left unchanged (district stays nil).
     public static func tag(graph: StreetGraph, with boundaries: [DistrictBoundary]) -> StreetGraph {
+        // Bounding-box pre-check per ring: the full Prague graph is ~32k
+        // segments against 112 districts, and this runs at app launch, so
+        // skip the ray cast for rings that can't possibly contain the point.
+        let indexed = boundaries.map { boundary in
+            (name: boundary.name, rings: boundary.rings.map { (box: BoundingBox($0), ring: $0) })
+        }
         var result = graph
         for (id, segment) in graph.segments {
             let representative = segment.points[segment.points.count / 2]
-            guard let match = boundaries.first(where: { boundary in
-                boundary.rings.contains { pointInPolygon(representative, $0) }
+            guard let match = indexed.first(where: { boundary in
+                boundary.rings.contains { $0.box.contains(representative) && pointInPolygon(representative, $0.ring) }
             }) else { continue }
 
             result.segments[id] = StreetSegment(
@@ -67,6 +73,22 @@ public enum DistrictTagger {
             )
         }
         return result
+    }
+
+    struct BoundingBox {
+        let minLat, maxLat, minLon, maxLon: Double
+
+        init(_ ring: [Coordinate]) {
+            minLat = ring.map(\.latitude).min() ?? 0
+            maxLat = ring.map(\.latitude).max() ?? 0
+            minLon = ring.map(\.longitude).min() ?? 0
+            maxLon = ring.map(\.longitude).max() ?? 0
+        }
+
+        func contains(_ point: Coordinate) -> Bool {
+            point.latitude >= minLat && point.latitude <= maxLat
+                && point.longitude >= minLon && point.longitude <= maxLon
+        }
     }
 
     /// Standard ray-casting point-in-polygon test.

@@ -9,7 +9,9 @@ Packages/StreetTrackerCore/   Pure Swift, no Apple frameworks. Testable
   OSMLoader.swift                Parses raw Overpass API JSON -> StreetGraph
   SpatialGridIndex.swift         Grid bucketing for fast nearest-segment lookup
   MapMatcher.swift               Snaps a GPS fix to the nearest segment
-  CoverageStore.swift            Tracks pass counts, computes coverage %
+  CoverageStore.swift            Turns matched fixes into passes, pass counts
+  CoverageSummary.swift          Coverage % kept up to date incrementally
+  PowerPolicy.swift              When GPS may drop to battery-saving accuracy
   RouteSuggester.swift           Nearest-unwalked-street suggestions
   RingAssembler.swift            Stitches boundary way fragments into closed rings
   DistrictTagger.swift           Point-in-polygon tags segments with a cadastral district
@@ -49,6 +51,21 @@ map-matching services for reference implementations). Nearest-segment
 matching will occasionally mis-snap on tight parallel streets or at complex
 intersections. Worth upgrading if that proves to matter in practice; not
 worth the complexity for a first version.
+
+The spatial grid indexes every cell an edge passes through, not just the
+cells holding its vertices: OSM leaves no nodes along straight stretches
+(~1,100 Prague streets have an edge over 150 m, the longest 738 m).
+`BundledDataTests` checks the indexed matcher against a brute-force scan
+of the real graph.
+
+## Passes
+
+A GPS fix arrives every ~10 m, so a fix is not a pass. `CoverageStore.
+recordFix` starts a pass after 2 consecutive fixes on the same segment
+(a single snap to a cross street at an intersection doesn't count) and
+keeps it going while you stay on it; walking the segment again counts as
+a new pass only after 10 minutes elsewhere. Walking down a street and
+straight back is therefore one pass.
 
 ## Street segments = whole OSM ways
 
@@ -114,6 +131,17 @@ to JSON in Application Support. Fine for an MVP; if the full Prague graph
 (tens of thousands of segments) makes JSON re-serialization on every step
 noticeably slow, swap `CoveragePersistence` for SQLite (e.g. GRDB) — it's
 the only file that touches disk, so this is a contained change.
+
+## Startup and battery
+
+The street graph (~13 MB JSON, 32k segments), district tagging and the
+spatial index are built in a detached task at launch; the map shows a
+loading indicator meanwhile. On Linux CI (debug build) this takes ~2.5 s.
+
+While tracking, `PowerPolicy` switches GPS to 100 m accuracy / 50 m
+distance filter when Core Motion reports a vehicle, or standing still for
+2+ minutes, and back to best accuracy as soon as you walk. Updates keep
+running in low power because a background app can't restart them.
 
 ## Things to sanity-check on a real device
 

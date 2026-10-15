@@ -44,4 +44,63 @@ final class CoverageStoreTests: XCTestCase {
         XCTAssertEqual(coverage["Malá Strana"] ?? -1, 100.0 / 400.0, accuracy: 0.0001)
         XCTAssertEqual(coverage["Vinohrady"] ?? -1, 0, accuracy: 0.0001)
     }
+
+    // MARK: - Passes from GPS fixes
+
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func testWalkingAlongOneStreetIsOnePass() {
+        let store = CoverageStore()
+        for i in 0..<30 { // one fix every ~10 m along a 300 m street
+            store.recordFix(on: "2", at: t0.addingTimeInterval(Double(i) * 8))
+        }
+        XCTAssertEqual(store.passCount(for: "2"), 1)
+    }
+
+    func testSingleFixOnCrossStreetDoesNotCount() {
+        let store = CoverageStore()
+        store.recordFix(on: "1", at: t0)
+        store.recordFix(on: "1", at: t0.addingTimeInterval(8))
+        store.recordFix(on: "3", at: t0.addingTimeInterval(16)) // snapped to the cross street once
+        store.recordFix(on: "1", at: t0.addingTimeInterval(24))
+        XCTAssertEqual(store.passCount(for: "3"), 0)
+        XCTAssertEqual(store.passCount(for: "1"), 1, "back on the same street within minutes = same pass")
+    }
+
+    func testComingBackLaterIsANewPass() {
+        let store = CoverageStore()
+        store.recordFix(on: "1", at: t0)
+        XCTAssertTrue(store.recordFix(on: "1", at: t0.addingTimeInterval(8)))
+        store.recordFix(on: "2", at: t0.addingTimeInterval(60))
+        store.recordFix(on: "2", at: t0.addingTimeInterval(68))
+        store.recordFix(on: "1", at: t0.addingTimeInterval(20 * 60))
+        XCTAssertTrue(store.recordFix(on: "1", at: t0.addingTimeInterval(20 * 60 + 8)))
+        XCTAssertEqual(store.passCount(for: "1"), 2)
+    }
+
+    func testLongWalkOnOneStreetStaysOnePass() {
+        // Refreshing on every fix: a 25-minute walk along one long street
+        // must not tick over into a second pass after rewalkInterval.
+        let store = CoverageStore()
+        for i in 0..<200 {
+            store.recordFix(on: "2", at: t0.addingTimeInterval(Double(i) * 8))
+        }
+        XCTAssertEqual(store.passCount(for: "2"), 1)
+    }
+
+    // MARK: - CoverageSummary
+
+    func testSummaryMatchesFullRecomputation() {
+        let graph = makeGraph()
+        let store = CoverageStore(passCounts: ["1": 3])
+        var summary = CoverageSummary(graph: graph, passCounts: store.passCounts)
+        XCTAssertEqual(summary.fraction, store.coverageFraction(graph: graph), accuracy: 1e-9)
+
+        store.recordPass(segmentID: "3")
+        summary.markWalked("3")
+        summary.markWalked("3") // repeated passes don't double count
+        summary.markWalked("unknown-id")
+        XCTAssertEqual(summary.fraction, store.coverageFraction(graph: graph), accuracy: 1e-9)
+        XCTAssertEqual(summary.districtFractions, store.districtCoverage(graph: graph))
+    }
 }

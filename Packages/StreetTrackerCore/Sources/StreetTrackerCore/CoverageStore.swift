@@ -8,12 +8,46 @@ import Foundation
 public final class CoverageStore {
     public private(set) var passCounts: [String: Int]
 
-    public init(passCounts: [String: Int] = [:]) {
+    /// GPS fixes needed in a row on one segment before it counts as walked,
+    /// so briefly snapping to a cross street at an intersection doesn't.
+    public let minConsecutiveFixes: Int
+    /// Walking a segment again only counts as a new pass after this long
+    /// away from it; continuing along the same street is the same pass.
+    public let rewalkInterval: TimeInterval
+
+    private var lastWalkedAt: [String: Date] = [:]
+    private var streakSegmentID: String?
+    private var streakLength = 0
+
+    public init(passCounts: [String: Int] = [:], minConsecutiveFixes: Int = 2, rewalkInterval: TimeInterval = 10 * 60) {
         self.passCounts = passCounts
+        self.minConsecutiveFixes = minConsecutiveFixes
+        self.rewalkInterval = rewalkInterval
     }
 
     public func recordPass(segmentID: String) {
         passCounts[segmentID, default: 0] += 1
+    }
+
+    /// Feeds one GPS fix matched to `segmentID`. Returns true when it started
+    /// a new pass (and the pass count went up). A fix arrives every ~10 m, so
+    /// counting each one would make a single walk down a street worth dozens
+    /// of passes.
+    @discardableResult
+    public func recordFix(on segmentID: String, at time: Date) -> Bool {
+        if segmentID == streakSegmentID {
+            streakLength += 1
+        } else {
+            streakSegmentID = segmentID
+            streakLength = 1
+        }
+        guard streakLength >= minConsecutiveFixes else { return false }
+
+        let last = lastWalkedAt[segmentID]
+        lastWalkedAt[segmentID] = time
+        if let last, time.timeIntervalSince(last) < rewalkInterval { return false }
+        recordPass(segmentID: segmentID)
+        return true
     }
 
     public func passCount(for segmentID: String) -> Int {

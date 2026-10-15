@@ -5,7 +5,8 @@ import StreetTrackerCore
 
 @MainActor
 final class TrackingViewModel: ObservableObject {
-    @Published private(set) var graph: StreetGraph
+    @Published private(set) var graph = StreetGraph(segments: [:])
+    @Published private(set) var isLoadingStreets = true
     @Published private(set) var passCounts: [String: Int] = [:]
     @Published private(set) var coverageFraction: Double = 0
     @Published private(set) var districtCoverage: [String: Double] = [:]
@@ -15,25 +16,22 @@ final class TrackingViewModel: ObservableObject {
     @Published private(set) var suggestions: [UnwalkedSuggestion] = []
 
     private let coverageStore: CoverageStore
-    private let matcher: MapMatcher
+    private var coverageSummary = CoverageSummary(graph: StreetGraph(segments: [:]), passCounts: [:])
+    /// nil until the bundled street data has loaded.
+    private var matcher: MapMatcher?
     private let locationTracker: LocationTracker
     private let motionMonitor = WalkingActivityMonitor()
     private let persistence: CoveragePersistence
     private var cancellables: Set<AnyCancellable> = []
 
     init() {
-        let loadedGraph = Self.loadBundledGraph()
         let persistence = CoveragePersistence()
         let savedCounts = persistence.loadPassCounts()
 
-        self.graph = loadedGraph
-        self.matcher = MapMatcher(graph: loadedGraph)
         self.persistence = persistence
         self.coverageStore = CoverageStore(passCounts: savedCounts)
         self.passCounts = savedCounts
         self.locationTracker = LocationTracker()
-
-        recomputeCoverage()
 
         locationTracker.onLocation = { [weak self] location in
             self?.handle(location: location)
@@ -44,9 +42,24 @@ final class TrackingViewModel: ObservableObject {
                 self?.authorizationStatus = status
             }
             .store(in: &cancellables)
+
+        // Parsing ~13 MB of Prague streets, tagging districts and building
+        // the spatial index takes a second or two; doing it here on the main
+        // thread froze the app at launch.
+        Task {
+            let (graph, matcher) = await Task.detached(priority: .userInitiated) {
+                let graph = Self.loadBundledGraph()
+                return (graph, MapMatcher(graph: graph))
+            }.value
+            self.graph = graph
+            self.matcher = matcher
+            self.coverageSummary = CoverageSummary(graph: graph, passCounts: coverageStore.passCounts)
+            publishCoverage()
+            isLoadingStreets = false
+        }
     }
 
-    private static func loadBundledGraph() -> StreetGraph {
+    nonisolated private static func loadBundledGraph() -> StreetGraph {
         guard
             let url = Bundle.main.url(forResource: "prague_streets", withExtension: "json"),
             let data = try? Data(contentsOf: url),
@@ -90,16 +103,18 @@ final class TrackingViewModel: ObservableObject {
         lastLocation = coord
 
         guard motionMonitor.isLikelyWalking else { return }
-        guard let match = matcher.match(coord) else { return }
+        guard let match = matcher?.match(coord) else { return }
+        // Fixes come every ~10 m; only a new pass changes counts, map and file.
+        guard coverageStore.recordFix(on: match.segmentID, at: location.timestamp) else { return }
 
-        coverageStore.recordPass(segmentID: match.segmentID)
         passCounts = coverageStore.passCounts
-        recomputeCoverage()
+        coverageSummary.markWalked(match.segmentID)
+        publishCoverage()
         persistence.savePassCounts(coverageStore.passCounts)
     }
 
-    private func recomputeCoverage() {
-        coverageFraction = coverageStore.coverageFraction(graph: graph)
-        districtCoverage = coverageStore.districtCoverage(graph: graph)
+    private func publishCoverage() {
+        coverageFraction = coverageSummary.fraction
+        districtCoverage = coverageSummary.districtFractions
     }
 }

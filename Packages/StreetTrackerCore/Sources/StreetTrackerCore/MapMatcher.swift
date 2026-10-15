@@ -14,7 +14,9 @@ public struct MatchResult: Sendable {
 /// acceptable trade for a first version; if it proves noisy in practice,
 /// the natural upgrade is to weight candidates by consistency with the
 /// previously matched segment / heading. See docs/ARCHITECTURE.md.
-public final class MapMatcher {
+/// Immutable after init, so it can be built on a background thread and
+/// handed to the main actor (the app builds it while loading street data).
+public final class MapMatcher: @unchecked Sendable {
     private let graph: StreetGraph
     private let index: SpatialGridIndex
     public let maxMatchDistanceMeters: Double

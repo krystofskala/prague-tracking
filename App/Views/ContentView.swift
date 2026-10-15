@@ -21,6 +21,11 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
                 }
 
+                if viewModel.isLoadingStreets {
+                    ProgressView("Loading Prague streets…")
+                        .font(.caption)
+                }
+
                 if viewModel.authorizationStatus == .denied || viewModel.authorizationStatus == .restricted {
                     Text("Background location is off. Enable \"Always\" in Settings to track while the app isn't in the foreground.")
                         .font(.caption)

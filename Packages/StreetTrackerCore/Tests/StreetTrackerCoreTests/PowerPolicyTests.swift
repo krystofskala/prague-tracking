@@ -31,4 +31,21 @@ final class PowerPolicyTests: XCTestCase {
         policy.update(.vehicle, at: t0)
         XCTAssertTrue(policy.isLowPower(at: t0))
     }
+
+    func testStopDuringARideStaysInLowPower() {
+        var policy = PowerPolicy()
+        policy.update(.vehicle, at: t0)
+        policy.update(.stationary, at: t0.addingTimeInterval(60)) // tram stop
+        XCTAssertTrue(policy.isLowPower(at: t0.addingTimeInterval(61)))
+        policy.update(.walking, at: t0.addingTimeInterval(120))
+        XCTAssertFalse(policy.isLowPower(at: t0.addingTimeInterval(120)))
+    }
+
+    func testLowConfidenceReadingsDoNotRestartStationaryTimer() {
+        var policy = PowerPolicy()
+        policy.update(.stationary, at: t0)
+        policy.update(.unknown, at: t0.addingTimeInterval(60))
+        policy.update(.stationary, at: t0.addingTimeInterval(90))
+        XCTAssertTrue(policy.isLowPower(at: t0.addingTimeInterval(121)))
+    }
 }

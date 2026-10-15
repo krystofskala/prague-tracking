@@ -23,8 +23,13 @@ public struct PowerPolicy: Sendable {
     }
 
     public mutating func update(_ activity: Activity, at time: Date) {
+        // Low-confidence readings keep the last known state, so wobbling
+        // confidence doesn't restart the stationary timer or wake full GPS.
+        guard activity != .unknown else { return }
         if activity == .stationary, current != .stationary {
-            stationarySince = time
+            // A tram or car stopping (stop, traffic) stays in low power
+            // instead of waking full GPS at every stop.
+            stationarySince = current == .vehicle ? time.addingTimeInterval(-stationaryDelay) : time
         }
         current = activity
     }

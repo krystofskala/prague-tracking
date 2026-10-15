@@ -61,11 +61,14 @@ of the real graph.
 ## Passes
 
 A GPS fix arrives every ~10 m, so a fix is not a pass. `CoverageStore.
-recordFix` starts a pass after 2 consecutive fixes on the same segment
-(a single snap to a cross street at an intersection doesn't count) and
-keeps it going while you stay on it; walking the segment again counts as
-a new pass only after 10 minutes elsewhere. Walking down a street and
-straight back is therefore one pass.
+recordFix` confirms a segment once it gets a second fix within 60 s (not
+necessarily consecutive, so GPS noise flipping between a sidewalk and the
+road a few metres away confirms both, while a single snap to a cross street
+at an intersection doesn't). Segments under 20 m count on their first fix.
+A confirmed segment counts as a new pass only after 10 minutes away from
+it, so walking down a street and straight back is one pass. Fixes during a
+ride are dropped before the store, so the last walking fix is too old to
+confirm anything after you get off.
 
 ## Street segments = whole OSM ways
 
@@ -140,7 +143,8 @@ loading indicator meanwhile. On Linux CI (debug build) this takes ~2.5 s.
 
 While tracking, `PowerPolicy` switches GPS to 100 m accuracy / 50 m
 distance filter when Core Motion reports a vehicle, or standing still for
-2+ minutes, and back to best accuracy as soon as you walk. Updates keep
+2+ minutes (a stop during a ride stays in low power), and back to best
+accuracy as soon as you walk. Low-confidence readings keep the last state. Updates keep
 running in low power because a background app can't restart them.
 
 ## Things to sanity-check on a real device

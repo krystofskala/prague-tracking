@@ -44,6 +44,7 @@ final class TrackingViewModel: ObservableObject {
             }
             .store(in: &cancellables)
         motionMonitor.$activity
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] activity in
                 self?.activityChanged(activity)
             }
@@ -109,11 +110,15 @@ final class TrackingViewModel: ObservableObject {
     private func handle(location: CLLocation) {
         let coord = Coordinate(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
         lastLocation = coord
+        // The delayed re-check below may not run while iOS suspends the app
+        // between fixes, so re-evaluate on every fix too.
+        applyPowerMode()
 
         guard motionMonitor.isLikelyWalking else { return }
         guard let match = matcher?.match(coord) else { return }
         // Fixes come every ~10 m; only a new pass changes counts, map and file.
-        guard coverageStore.recordFix(on: match.segmentID, at: location.timestamp) else { return }
+        let length = graph.segments[match.segmentID]?.lengthMeters ?? .infinity
+        guard coverageStore.recordFix(on: match.segmentID, at: location.timestamp, segmentLengthMeters: length) else { return }
 
         passCounts = coverageStore.passCounts
         coverageSummary.markWalked(match.segmentID)

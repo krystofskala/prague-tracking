@@ -63,6 +63,7 @@ final class CoverageStoreTests: XCTestCase {
         store.recordFix(on: "1", at: t0.addingTimeInterval(8))
         store.recordFix(on: "3", at: t0.addingTimeInterval(16)) // snapped to the cross street once
         store.recordFix(on: "1", at: t0.addingTimeInterval(24))
+        store.recordFix(on: "1", at: t0.addingTimeInterval(32))
         XCTAssertEqual(store.passCount(for: "3"), 0)
         XCTAssertEqual(store.passCount(for: "1"), 1, "back on the same street within minutes = same pass")
     }
@@ -86,6 +87,31 @@ final class CoverageStoreTests: XCTestCase {
             store.recordFix(on: "2", at: t0.addingTimeInterval(Double(i) * 8))
         }
         XCTAssertEqual(store.passCount(for: "2"), 1)
+    }
+
+    func testNoiseAlternatingBetweenTwoCloseSegmentsCountsBoth() {
+        // Sidewalk and road a few metres apart: GPS flips A, B, A, B...
+        let store = CoverageStore()
+        for i in 0..<6 {
+            store.recordFix(on: i.isMultiple(of: 2) ? "1" : "2", at: t0.addingTimeInterval(Double(i) * 8))
+        }
+        XCTAssertEqual(store.passCount(for: "1"), 1)
+        XCTAssertEqual(store.passCount(for: "2"), 1)
+    }
+
+    func testShortPassageCountsOnSingleFix() {
+        let store = CoverageStore()
+        XCTAssertTrue(store.recordFix(on: "1", at: t0, segmentLengthMeters: 12))
+        XCTAssertFalse(store.recordFix(on: "2", at: t0.addingTimeInterval(8), segmentLengthMeters: 300))
+    }
+
+    func testFixBeforeARideDoesNotConfirmFixAfterIt() {
+        // Fixes during a tram ride are dropped before reaching the store;
+        // the last walking fix is minutes old by the time you get off.
+        let store = CoverageStore()
+        store.recordFix(on: "1", at: t0)
+        XCTAssertFalse(store.recordFix(on: "1", at: t0.addingTimeInterval(5 * 60)))
+        XCTAssertEqual(store.passCount(for: "1"), 0)
     }
 
     // MARK: - CoverageSummary

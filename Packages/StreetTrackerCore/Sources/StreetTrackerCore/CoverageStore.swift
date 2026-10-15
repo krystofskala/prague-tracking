@@ -8,20 +8,30 @@ import Foundation
 public final class CoverageStore {
     public private(set) var passCounts: [String: Int]
 
-    /// GPS fixes needed in a row on one segment before it counts as walked,
-    /// so briefly snapping to a cross street at an intersection doesn't.
-    public let minConsecutiveFixes: Int
+    /// A segment counts as walked once it gets a second fix within this
+    /// window, so a single snap to a cross street at an intersection
+    /// doesn't count, but GPS noise alternating between two close segments
+    /// (sidewalk and road) still confirms both.
+    public let confirmWindow: TimeInterval
+    /// Segments shorter than this count on their first fix: with a ~10 m
+    /// distance filter a short passage often gets only one.
+    public let shortSegmentMeters: Double
     /// Walking a segment again only counts as a new pass after this long
     /// away from it; continuing along the same street is the same pass.
     public let rewalkInterval: TimeInterval
 
+    private var lastFixAt: [String: Date] = [:]
     private var lastWalkedAt: [String: Date] = [:]
-    private var streakSegmentID: String?
-    private var streakLength = 0
 
-    public init(passCounts: [String: Int] = [:], minConsecutiveFixes: Int = 2, rewalkInterval: TimeInterval = 10 * 60) {
+    public init(
+        passCounts: [String: Int] = [:],
+        confirmWindow: TimeInterval = 60,
+        shortSegmentMeters: Double = 20,
+        rewalkInterval: TimeInterval = 10 * 60
+    ) {
         self.passCounts = passCounts
-        self.minConsecutiveFixes = minConsecutiveFixes
+        self.confirmWindow = confirmWindow
+        self.shortSegmentMeters = shortSegmentMeters
         self.rewalkInterval = rewalkInterval
     }
 
@@ -33,15 +43,16 @@ public final class CoverageStore {
     /// a new pass (and the pass count went up). A fix arrives every ~10 m, so
     /// counting each one would make a single walk down a street worth dozens
     /// of passes.
+    ///
+    /// Note: `lastWalkedAt` lives in memory only, so right after an app
+    /// restart a street walked minutes before can count again.
     @discardableResult
-    public func recordFix(on segmentID: String, at time: Date) -> Bool {
-        if segmentID == streakSegmentID {
-            streakLength += 1
-        } else {
-            streakSegmentID = segmentID
-            streakLength = 1
-        }
-        guard streakLength >= minConsecutiveFixes else { return false }
+    public func recordFix(on segmentID: String, at time: Date, segmentLengthMeters: Double = .infinity) -> Bool {
+        let previousFix = lastFixAt[segmentID]
+        lastFixAt[segmentID] = time
+        let confirmed = segmentLengthMeters < shortSegmentMeters
+            || previousFix.map { time.timeIntervalSince($0) <= confirmWindow } == true
+        guard confirmed else { return false }
 
         let last = lastWalkedAt[segmentID]
         lastWalkedAt[segmentID] = time

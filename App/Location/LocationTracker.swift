@@ -12,6 +12,7 @@ final class LocationTracker: NSObject, ObservableObject {
     var onLocation: ((CLLocation) -> Void)?
 
     private let manager = CLLocationManager()
+    private var isLowPower = false
 
     override init() {
         authorizationStatus = manager.authorizationStatus
@@ -28,6 +29,8 @@ final class LocationTracker: NSObject, ObservableObject {
     /// Battery saving while standing still or riding (see PowerPolicy):
     /// updates keep flowing so tracking resumes by itself, just coarser.
     func setLowPower(_ lowPower: Bool) {
+        guard lowPower != isLowPower else { return }
+        isLowPower = lowPower
         manager.desiredAccuracy = lowPower ? kCLLocationAccuracyHundredMeters : kCLLocationAccuracyBest
         manager.distanceFilter = lowPower ? 50 : 10
     }

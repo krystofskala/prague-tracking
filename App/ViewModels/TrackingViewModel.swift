@@ -127,7 +127,9 @@ final class TrackingViewModel: ObservableObject {
         if activity == .stationary {
             // Core Motion only reports changes, so check again once the
             // stationary delay has passed.
-            DispatchQueue.main.asyncAfter(deadline: .now() + powerPolicy.stationaryDelay + 1) { [weak self] in
+            let delay = powerPolicy.stationaryDelay + 1
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 self?.applyPowerMode()
             }
         }

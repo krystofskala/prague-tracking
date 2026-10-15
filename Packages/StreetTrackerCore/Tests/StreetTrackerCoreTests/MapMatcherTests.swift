@@ -64,4 +64,24 @@ final class MapMatcherTests: XCTestCase {
         let matcher = MapMatcher(graph: StreetGraph(segments: [:]))
         XCTAssertNil(matcher.match(Coordinate(latitude: 50.0882, longitude: 14.4030)))
     }
+
+    /// A long straight street with no nodes in between (common in OSM: ~1,100
+    /// Prague streets have an edge longer than 150 m). A fix in the middle is
+    /// far from both endpoints, so the grid index must cover the whole edge,
+    /// not just the cells that contain vertices.
+    func testMatchesMiddleOfLongStraightEdge() {
+        let long = StreetSegment(
+            id: "L",
+            name: "Dlouhá rovná",
+            points: [
+                Coordinate(latitude: 50.0800, longitude: 14.4000),
+                Coordinate(latitude: 50.0800, longitude: 14.4100) // ~715 m east
+            ],
+            lengthMeters: 715,
+            district: nil
+        )
+        let matcher = MapMatcher(graph: StreetGraph(segments: ["L": long]))
+        let middle = Coordinate(latitude: 50.08005, longitude: 14.4050) // ~5 m north of the line
+        XCTAssertEqual(matcher.match(middle)?.segmentID, "L")
+    }
 }

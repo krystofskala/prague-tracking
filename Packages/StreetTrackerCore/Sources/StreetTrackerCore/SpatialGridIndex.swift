@@ -18,8 +18,22 @@ final class SpatialGridIndex {
         self.cellSizeDegrees = cellSizeDegrees
         for (id, segment) in graph.segments {
             for point in segment.points {
-                let key = Self.key(for: point, cellSize: cellSizeDegrees)
-                cells[key, default: []].insert(id)
+                cells[Self.key(for: point, cellSize: cellSizeDegrees), default: []].insert(id)
+            }
+            // Also every cell an edge passes through: OSM leaves no nodes along
+            // straight stretches (some Prague edges are 700 m+), and a fix in
+            // the middle of one would otherwise find no candidates at all.
+            for (a, b) in zip(segment.points, segment.points.dropFirst()) {
+                let steps = Int(max(abs(b.latitude - a.latitude), abs(b.longitude - a.longitude)) / (cellSizeDegrees / 2))
+                guard steps > 1 else { continue }
+                for step in 1..<steps {
+                    let t = Double(step) / Double(steps)
+                    let point = Coordinate(
+                        latitude: a.latitude + (b.latitude - a.latitude) * t,
+                        longitude: a.longitude + (b.longitude - a.longitude) * t
+                    )
+                    cells[Self.key(for: point, cellSize: cellSizeDegrees), default: []].insert(id)
+                }
             }
         }
     }

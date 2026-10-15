@@ -60,9 +60,19 @@ public enum DistrictTagger {
         var result = graph
         for (id, segment) in graph.segments {
             let representative = segment.points[segment.points.count / 2]
-            guard let match = indexed.first(where: { boundary in
-                boundary.rings.contains { $0.box.contains(representative) && pointInPolygon(representative, $0.ring) }
-            }) else { continue }
+            // Smallest containing ring wins: Josefov is an enclave inside
+            // Staré Město, whose relation lists it as an `inner` ring that
+            // RingAssembler ignores, so both outer rings contain its streets.
+            var match: (name: String, area: Double)?
+            for boundary in indexed {
+                for ring in boundary.rings
+                where ring.box.contains(representative) && pointInPolygon(representative, ring.ring) {
+                    if ring.box.area < (match?.area ?? .infinity) {
+                        match = (boundary.name, ring.box.area)
+                    }
+                }
+            }
+            guard let match else { continue }
 
             result.segments[id] = StreetSegment(
                 id: segment.id,
@@ -84,6 +94,8 @@ public enum DistrictTagger {
             minLon = ring.map(\.longitude).min() ?? 0
             maxLon = ring.map(\.longitude).max() ?? 0
         }
+
+        var area: Double { (maxLat - minLat) * (maxLon - minLon) }
 
         func contains(_ point: Coordinate) -> Bool {
             point.latitude >= minLat && point.latitude <= maxLat

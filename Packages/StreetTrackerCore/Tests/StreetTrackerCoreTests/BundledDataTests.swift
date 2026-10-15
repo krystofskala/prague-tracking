@@ -38,6 +38,7 @@ final class BundledDataTests: XCTestCase {
         XCTAssertGreaterThan(graph.segments.count, 20_000)
         XCTAssertGreaterThanOrEqual(boundaries.count, 100, "Prague has 112 katastrální území")
         XCTAssertGreaterThan(Double(withDistrict) / Double(graph.segments.count), 0.98)
+        XCTAssertTrue(districtNames.contains("Josefov"), "enclave inside Staré Město")
 
         // Hot paths on the real graph: matching runs on every GPS fix,
         // suggestions on a button tap.

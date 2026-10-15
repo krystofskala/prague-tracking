@@ -76,4 +76,30 @@ final class DistrictTaggerTests: XCTestCase {
         XCTAssertEqual(tagged.segments["in"]?.district, "Malá Strana")
         XCTAssertNil(tagged.segments["out"]?.district)
     }
+
+    func testEnclaveDistrictWinsOverSurroundingOne() {
+        // Josefov sits inside Staré Město; both outer rings contain its streets.
+        func square(_ lat: Double, _ lon: Double, _ size: Double) -> [Coordinate] {
+            [Coordinate(latitude: lat, longitude: lon),
+             Coordinate(latitude: lat + size, longitude: lon),
+             Coordinate(latitude: lat + size, longitude: lon + size),
+             Coordinate(latitude: lat, longitude: lon + size),
+             Coordinate(latitude: lat, longitude: lon)]
+        }
+        let stareMesto = DistrictBoundary(name: "Staré Město", rings: [square(50.08, 14.41, 0.02)])
+        let josefov = DistrictBoundary(name: "Josefov", rings: [square(50.088, 14.418, 0.004)])
+        let inJosefov = StreetSegment(id: "j", name: "Široká", points: [
+            Coordinate(latitude: 50.089, longitude: 14.419), Coordinate(latitude: 50.090, longitude: 14.420)
+        ], lengthMeters: 130, district: nil)
+        let elsewhere = StreetSegment(id: "s", name: "Celetná", points: [
+            Coordinate(latitude: 50.082, longitude: 14.412), Coordinate(latitude: 50.083, longitude: 14.413)
+        ], lengthMeters: 130, district: nil)
+        let graph = StreetGraph(segments: ["j": inJosefov, "s": elsewhere])
+
+        for order in [[stareMesto, josefov], [josefov, stareMesto]] {
+            let tagged = DistrictTagger.tag(graph: graph, with: order)
+            XCTAssertEqual(tagged.segments["j"]?.district, "Josefov")
+            XCTAssertEqual(tagged.segments["s"]?.district, "Staré Město")
+        }
+    }
 }

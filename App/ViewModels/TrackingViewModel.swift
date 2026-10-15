@@ -21,6 +21,7 @@ final class TrackingViewModel: ObservableObject {
     private var matcher: MapMatcher?
     private let locationTracker: LocationTracker
     private let motionMonitor = WalkingActivityMonitor()
+    private var powerPolicy = PowerPolicy()
     private let persistence: CoveragePersistence
     private var cancellables: Set<AnyCancellable> = []
 
@@ -40,6 +41,11 @@ final class TrackingViewModel: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] status in
                 self?.authorizationStatus = status
+            }
+            .store(in: &cancellables)
+        motionMonitor.$activity
+            .sink { [weak self] activity in
+                self?.activityChanged(activity)
             }
             .store(in: &cancellables)
 
@@ -87,6 +93,8 @@ final class TrackingViewModel: ObservableObject {
             locationTracker.stopTracking()
             motionMonitor.stop()
         } else {
+            powerPolicy = PowerPolicy()
+            locationTracker.setLowPower(false)
             locationTracker.startTracking()
             motionMonitor.start()
         }
@@ -111,6 +119,22 @@ final class TrackingViewModel: ObservableObject {
         coverageSummary.markWalked(match.segmentID)
         publishCoverage()
         persistence.savePassCounts(coverageStore.passCounts)
+    }
+
+    private func activityChanged(_ activity: PowerPolicy.Activity) {
+        powerPolicy.update(activity, at: Date())
+        applyPowerMode()
+        if activity == .stationary {
+            // Core Motion only reports changes, so check again once the
+            // stationary delay has passed.
+            DispatchQueue.main.asyncAfter(deadline: .now() + powerPolicy.stationaryDelay + 1) { [weak self] in
+                self?.applyPowerMode()
+            }
+        }
+    }
+
+    private func applyPowerMode() {
+        locationTracker.setLowPower(powerPolicy.isLowPower(at: Date()))
     }
 
     private func publishCoverage() {

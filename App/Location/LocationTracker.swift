@@ -25,6 +25,13 @@ final class LocationTracker: NSObject, ObservableObject {
         manager.showsBackgroundLocationIndicator = true
     }
 
+    /// Battery saving while standing still or riding (see PowerPolicy):
+    /// updates keep flowing so tracking resumes by itself, just coarser.
+    func setLowPower(_ lowPower: Bool) {
+        manager.desiredAccuracy = lowPower ? kCLLocationAccuracyHundredMeters : kCLLocationAccuracyBest
+        manager.distanceFilter = lowPower ? 50 : 10
+    }
+
     func requestAuthorization() {
         manager.requestAlwaysAuthorization()
     }

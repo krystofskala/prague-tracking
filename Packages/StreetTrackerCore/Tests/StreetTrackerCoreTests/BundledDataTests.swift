@@ -38,5 +38,49 @@ final class BundledDataTests: XCTestCase {
         XCTAssertGreaterThan(graph.segments.count, 20_000)
         XCTAssertGreaterThanOrEqual(boundaries.count, 100, "Prague has 112 katastrální území")
         XCTAssertGreaterThan(Double(withDistrict) / Double(graph.segments.count), 0.98)
+
+        // Hot paths on the real graph: matching runs on every GPS fix,
+        // suggestions on a button tap.
+        start = Date()
+        let matcher = MapMatcher(graph: tagged)
+        let indexSeconds = Date().timeIntervalSince(start)
+        let malostranske = Coordinate(latitude: 50.0880, longitude: 14.4035)
+        start = Date()
+        var matched = 0
+        for i in 0..<1_000 {
+            let point = Coordinate(latitude: malostranske.latitude + Double(i % 40) * 0.0001,
+                                   longitude: malostranske.longitude + Double(i / 40) * 0.0001)
+            if matcher.match(point) != nil { matched += 1 }
+        }
+        let matchMillis = Date().timeIntervalSince(start) * 1000 / 1_000
+        start = Date()
+        let suggestions = RouteSuggester.nearestUnwalked(from: malostranske, graph: tagged, coverage: CoverageStore())
+        let suggestMillis = Date().timeIntervalSince(start) * 1000
+        print(String(format: "Hot paths: index %.2f s, match %.3f ms/fix (%d/1000 matched), suggestions %.0f ms",
+                     indexSeconds, matchMillis, matched, suggestMillis))
+        XCTAssertEqual(suggestions.count, 20)
+        XCTAssertGreaterThan(matched, 500)
+
+        // The grid index must not miss anything: compare with a brute-force
+        // scan of every segment for a sample of points.
+        for i in stride(from: 0, to: 1_000, by: 37) {
+            let point = Coordinate(latitude: malostranske.latitude + Double(i % 40) * 0.0001,
+                                   longitude: malostranske.longitude + Double(i / 40) * 0.0001)
+            var bruteBest = Double.greatestFiniteMagnitude
+            for segment in tagged.segments.values {
+                for (a, b) in zip(segment.points, segment.points.dropFirst()) {
+                    let d = Geo.pointToSegmentDistance(p: Geo.toLocalMeters(point, origin: point),
+                                                       a: Geo.toLocalMeters(a, origin: point),
+                                                       b: Geo.toLocalMeters(b, origin: point))
+                    bruteBest = min(bruteBest, d)
+                }
+            }
+            let indexed = matcher.match(point)
+            if bruteBest <= matcher.maxMatchDistanceMeters {
+                XCTAssertEqual(indexed?.distanceMeters ?? .infinity, bruteBest, accuracy: 0.01, "point \(i)")
+            } else {
+                XCTAssertNil(indexed, "point \(i)")
+            }
+        }
     }
 }

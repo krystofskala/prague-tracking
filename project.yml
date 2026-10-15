@@ -22,10 +22,11 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleDisplayName: "Prague Streets"
+        CFBundleDevelopmentRegion: cs
         UILaunchScreen: {}
-        NSLocationWhenInUseUsageDescription: "Prague Street Tracker uses your location to record which streets you've walked. Your location data is stored only on this device and is never sent anywhere."
-        NSLocationAlwaysAndWhenInUseUsageDescription: "Prague Street Tracker needs background location access to keep tracking the streets you walk while your phone is locked or you're using another app. Your location data is stored only on this device and is never sent anywhere."
-        NSMotionUsageDescription: "Prague Street Tracker uses motion data to tell walking apart from driving or cycling, so rides don't get logged as walked streets."
+        NSLocationWhenInUseUsageDescription: "Appka zaznamenává, kterými ulicemi jsi prošel. Poloha zůstává jen v tomto telefonu a nikam se neposílá."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Poloha na pozadí je potřeba, aby appka sledovala chůzi i se zamčeným telefonem. Zůstává jen v tomto telefonu a nikam se neposílá."
+        NSMotionUsageDescription: "Pohyb slouží k rozlišení chůze od jízdy autem nebo na kole, aby se jízda nezapočítala."
         UIBackgroundModes:
           - location
     settings:

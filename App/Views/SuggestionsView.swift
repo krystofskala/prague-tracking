@@ -8,7 +8,7 @@ struct SuggestionsView: View {
         NavigationStack {
             List(suggestions, id: \.segmentID) { suggestion in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(suggestion.name ?? "Unnamed street")
+                    Text(suggestion.name ?? "Ulice bez názvu")
                         .font(.body)
                     HStack {
                         if let district = suggestion.district {
@@ -27,9 +27,9 @@ struct SuggestionsView: View {
                         Image(systemName: "map")
                             .font(.largeTitle)
                             .foregroundStyle(.secondary)
-                        Text("No suggestions yet")
+                        Text("Zatím žádné návrhy")
                             .font(.headline)
-                        Text("Start tracking to get a location fix, then try again.")
+                        Text("Zapni sledování, aby appka znala tvou polohu, a zkus to znovu.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -37,14 +37,14 @@ struct SuggestionsView: View {
                     }
                 }
             }
-            .navigationTitle("Nearby unwalked streets")
+            .navigationTitle("Neprošlé ulice poblíž")
         }
     }
 
     private func formattedDistance(_ meters: Double) -> String {
         if meters < 1000 {
-            return "\(Int(meters))m"
+            return "\(Int(meters)) m"
         }
-        return String(format: "%.1fkm", meters / 1000)
+        return String(format: "%.1f km", meters / 1000)
     }
 }

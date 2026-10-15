@@ -12,33 +12,33 @@ struct ContentView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("\(Int(viewModel.coverageFraction * 100))% of loaded streets walked")
+                    Text(verbatim: "Prošlo \((viewModel.coverageFraction * 100).formatted(.number.precision(.fractionLength(1)))) % ulic Prahy")
                         .font(.headline)
                     Spacer()
-                    Button(viewModel.isTracking ? "Stop" : "Start") {
+                    Button(viewModel.isTracking ? "Zastavit" : "Začít") {
                         viewModel.toggleTracking()
                     }
                     .buttonStyle(.borderedProminent)
                 }
 
                 if viewModel.isLoadingStreets {
-                    ProgressView("Loading Prague streets…")
+                    ProgressView("Načítám ulice Prahy…")
                         .font(.caption)
                 }
 
                 if viewModel.authorizationStatus == .denied || viewModel.authorizationStatus == .restricted {
-                    Text("Background location is off. Enable \"Always\" in Settings to track while the app isn't in the foreground.")
+                    Text("Poloha je vypnutá. V Nastavení povol „Vždy“, aby appka sledovala chůzi i se zamčeným telefonem.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 if let leastComplete = topDistricts.first {
-                    Text("Least walked: \(leastComplete.name) (\(Int(leastComplete.fraction * 100))%)")
+                    Text(verbatim: "Nejméně prošlá čtvrť: \(leastComplete.name) (\(Int(leastComplete.fraction * 100)) %)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
-                Button("Suggest nearby streets") {
+                Button("Navrhni neprošlé ulice poblíž") {
                     viewModel.refreshSuggestions()
                     showingSuggestions = true
                 }
@@ -60,7 +60,8 @@ struct ContentView: View {
 
     private var topDistricts: [(name: String, fraction: Double)] {
         viewModel.districtCoverage
-            .filter { $0.value < 1.0 }
+            // "Unknown" = the few streets outside every district polygon.
+            .filter { $0.key != "Unknown" && $0.value < 1.0 }
             .sorted { $0.value < $1.value }
             .prefix(1)
             .map { (name: $0.key, fraction: $0.value) }

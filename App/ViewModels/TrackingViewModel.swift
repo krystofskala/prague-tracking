@@ -14,6 +14,8 @@ final class TrackingViewModel: ObservableObject {
     @Published private(set) var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published private(set) var lastLocation: Coordinate?
     @Published private(set) var suggestions: [UnwalkedSuggestion] = []
+    /// GPS points written to the walk log since the app started.
+    @Published private(set) var loggedPoints = 0
 
     private let coverageStore: CoverageStore
     private var coverageSummary = CoverageSummary(graph: StreetGraph(segments: [:]), passCounts: [:])
@@ -23,6 +25,10 @@ final class TrackingViewModel: ObservableObject {
     private let motionMonitor = WalkingActivityMonitor()
     private var powerPolicy = PowerPolicy()
     private let persistence: CoveragePersistence
+    private let trackLog = TrackLog()
+    /// Remembered so tracking continues by itself if iOS ended the app
+    /// mid-walk and it gets opened again.
+    private static let trackingKey = "trackingOn"
     private var cancellables: Set<AnyCancellable> = []
 
     init() {
@@ -49,6 +55,10 @@ final class TrackingViewModel: ObservableObject {
                 self?.activityChanged(activity)
             }
             .store(in: &cancellables)
+
+        if UserDefaults.standard.bool(forKey: Self.trackingKey) {
+            startTracking()
+        }
 
         // Parsing ~13 MB of Prague streets, tagging districts and building
         // the spatial index takes a second or two; doing it here on the main
@@ -93,13 +103,20 @@ final class TrackingViewModel: ObservableObject {
         if locationTracker.isTracking {
             locationTracker.stopTracking()
             motionMonitor.stop()
+            isTracking = false
+            UserDefaults.standard.set(false, forKey: Self.trackingKey)
         } else {
-            powerPolicy = PowerPolicy()
-            locationTracker.setLowPower(false)
-            locationTracker.startTracking()
-            motionMonitor.start()
+            startTracking()
         }
-        isTracking = locationTracker.isTracking
+    }
+
+    private func startTracking() {
+        powerPolicy = PowerPolicy()
+        locationTracker.setLowPower(false)
+        locationTracker.startTracking()
+        motionMonitor.start()
+        isTracking = true
+        UserDefaults.standard.set(true, forKey: Self.trackingKey)
     }
 
     func refreshSuggestions(limit: Int = 20) {
@@ -114,8 +131,19 @@ final class TrackingViewModel: ObservableObject {
         // between fixes, so re-evaluate on every fix too.
         applyPowerMode()
 
+        // Log every fix (walking or not) before any filtering, so the whole
+        // route with exact times survives even if matching rules change.
+        let matched = matcher?.match(coord)
+        let segment = matched.flatMap { graph.segments[$0.segmentID] }
+        trackLog.append(
+            location,
+            isWalking: motionMonitor.isLikelyWalking,
+            street: segment.map { TrackLog.StreetInfo(name: $0.name, district: $0.district) }
+        )
+        loggedPoints += 1
+
         guard motionMonitor.isLikelyWalking else { return }
-        guard let match = matcher?.match(coord) else { return }
+        guard let match = matched else { return }
         // Fixes come every ~10 m; only a new pass changes counts, map and file.
         let length = graph.segments[match.segmentID]?.lengthMeters ?? .infinity
         guard coverageStore.recordFix(on: match.segmentID, at: location.timestamp, segmentLengthMeters: length) else { return }

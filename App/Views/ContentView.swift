@@ -21,6 +21,12 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
                 }
 
+                if viewModel.isTracking {
+                    Text(verbatim: "Nahrávám trasu · \(viewModel.loggedPoints) bodů (Soubory › Prague Streets › trasy)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 if viewModel.isLoadingStreets {
                     ProgressView("Načítám ulice Prahy…")
                         .font(.caption)

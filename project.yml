@@ -27,6 +27,8 @@ targets:
         NSLocationWhenInUseUsageDescription: "Appka zaznamenává, kterými ulicemi jsi prošel. Poloha zůstává jen v tomto telefonu a nikam se neposílá."
         NSLocationAlwaysAndWhenInUseUsageDescription: "Poloha na pozadí je potřeba, aby appka sledovala chůzi i se zamčeným telefonem. Zůstává jen v tomto telefonu a nikam se neposílá."
         NSMotionUsageDescription: "Pohyb slouží k rozlišení chůze od jízdy autem nebo na kole, aby se jízda nezapočítala."
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         UIBackgroundModes:
           - location
     settings:

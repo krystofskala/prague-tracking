@@ -14,12 +14,12 @@
       "tintColor": "2563EB",
       "versions": [
         {
-          "version": "0.1.4",
-          "buildVersion": "4",
-          "localizedDescription": "Prague Streets 0.1.4.",
-          "date": "2026-10-26T14:48:51Z",
-          "size": 3118348,
-          "downloadURL": "https://github.com/krystofskala/prague-tracking/releases/download/ios-build-4/PragueStreetTracker.ipa",
+          "version": "0.1.5",
+          "buildVersion": "5",
+          "localizedDescription": "Prague Streets 0.1.5.",
+          "date": "2026-10-26T14:54:44Z",
+          "size": 3127323,
+          "downloadURL": "https://github.com/krystofskala/prague-tracking/releases/download/ios-build-5/PragueStreetTracker.ipa",
           "minOSVersion": "16.0"
         }
       ],
@@ -34,5 +34,5 @@
     }
   ],
   "news": [],
-  "appCommit": "cb5adfaf2b79716b354e20110b146f997698453c"
+  "appCommit": "2d5d14650ded471f98fdf8fc3e81340b6841374d"
 }

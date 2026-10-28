@@ -74,7 +74,11 @@ final class ScreenTests: XCTestCase {
         app.buttons["Dokreslit"].tap()
         screenshot("6e-dokreslit")
         app.buttons["Uložit"].tap()
-        XCTAssertTrue(app.buttons["Vrátit původní trasu"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["nazev"].waitForExistence(timeout: 10))
+        // The restore button sits at the bottom of a lazy List, scroll to it.
+        let restore = app.buttons["Vrátit původní trasu"]
+        for _ in 0..<4 where !restore.exists { app.swipeUp() }
+        XCTAssertTrue(restore.waitForExistence(timeout: 5))
         _ = XCTWaiter.wait(for: [XCTestExpectation(description: "rebuild")], timeout: 3)
         screenshot("6f-upravena-prochazka")
         app.navigationBars.buttons.firstMatch.tap()

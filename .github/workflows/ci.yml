@@ -62,6 +62,14 @@ jobs:
         run: |
           mkdir -p screenshots
           xcrun xcresulttool export attachments --path UITests.xcresult --output-path screenshots || true
+          # Name each file after the screenshot ("1-mapa-s-dnesni-trasou.png").
+          python3 - <<'PY' || true
+          import json, os
+          for test in json.load(open("screenshots/manifest.json")):
+              for a in test["attachments"]:
+                  name = a["suggestedHumanReadableName"].split("_")[0] + ".png"
+                  os.rename("screenshots/" + a["exportedFileName"], "screenshots/" + name)
+          PY
           ls -la screenshots
       - uses: actions/upload-artifact@v4
         if: always()

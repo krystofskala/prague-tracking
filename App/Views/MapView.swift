@@ -12,12 +12,12 @@ final class StreetMultiPolyline: MKMultiPolyline {
 
 /// Today's recorded GPS route, drawn thin so gaps in street matching are
 /// visible as "walked here, but not snapped".
-final class RoutePolyline: MKPolyline {}
+final class RoutePolyline: MKMultiPolyline {}
 
 struct MapView: UIViewRepresentable {
     let graph: StreetGraph
     let passCounts: [String: Int]
-    let route: [Coordinate]
+    let route: [[Coordinate]]
     /// Zoom to the route once it appears (demo/screenshots).
     var centerOnRoute = false
 
@@ -65,17 +65,21 @@ struct MapView: UIViewRepresentable {
     }
 
     private func updateRoute(_ mapView: MKMapView, coordinator: Coordinator) {
-        guard route.count != coordinator.routeCount else { return }
-        coordinator.routeCount = route.count
+        let count = route.reduce(0) { $0 + $1.count }
+        guard count != coordinator.routeCount else { return }
+        coordinator.routeCount = count
         if let old = coordinator.routeOverlay {
             mapView.removeOverlay(old)
         }
-        guard route.count >= 2 else {
+        let lines = route.filter { $0.count >= 2 }.map { piece -> MKPolyline in
+            let coords = piece.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+            return MKPolyline(coordinates: coords, count: coords.count)
+        }
+        guard !lines.isEmpty else {
             coordinator.routeOverlay = nil
             return
         }
-        let coords = route.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
-        let overlay = RoutePolyline(coordinates: coords, count: coords.count)
+        let overlay = RoutePolyline(lines)
         coordinator.routeOverlay = overlay
         mapView.insertOverlay(overlay, at: 0)
         if centerOnRoute, !coordinator.centeredOnRoute {
@@ -108,7 +112,7 @@ struct MapView: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let route = overlay as? RoutePolyline {
-                let renderer = MKPolylineRenderer(polyline: route)
+                let renderer = MKMultiPolylineRenderer(multiPolyline: route)
                 renderer.strokeColor = UIColor.systemOrange
                 renderer.lineWidth = 2
                 return renderer

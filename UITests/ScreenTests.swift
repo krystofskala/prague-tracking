@@ -12,7 +12,6 @@ final class ScreenTests: XCTestCase {
     }
 
     func testMainScreenWithDemoWalk() {
-        XCUIDevice.shared.appearance = .light
         app.launch()
         waitForDemoWalk()
         screenshot("1-mapa-s-dnesni-trasou")
@@ -62,11 +61,10 @@ final class ScreenTests: XCTestCase {
     }
 
     func testDarkMode() {
-        XCUIDevice.shared.appearance = .dark
+        app.launchArguments.append("-dark")
         app.launch()
         waitForDemoWalk()
         screenshot("8-tmavy-rezim")
-        XCUIDevice.shared.appearance = .light
     }
 
     private func waitForDemoWalk() {

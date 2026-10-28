@@ -21,8 +21,12 @@ final class TrackingViewModel: ObservableObject {
     /// apart), drawn under the streets. Published only while the app is on
     /// screen and at most every `routePublishInterval`, so a background walk
     /// doesn't redraw the map with every fix.
-    @Published private(set) var todaysRoute: [Coordinate] = []
-    private var routeBuffer: [Coordinate] = []
+    /// Split where the GPS was silent over `routeGap`, so a gap is never
+    /// drawn as a straight line through houses.
+    @Published private(set) var todaysRoute: [[Coordinate]] = []
+    private var routeBuffer: [[Coordinate]] = []
+    private var lastRouteFix: Date?
+    private static let routeGap: TimeInterval = 60
     private var routeDay = Calendar.current.startOfDay(for: Date())
     private var lastRoutePublish = Date.distantPast
     private static let routeSpacing: Double = 5
@@ -85,10 +89,10 @@ final class TrackingViewModel: ObservableObject {
         let mode = UserDefaults.standard.string(forKey: Self.modeKey).flatMap(PowerPolicy.Mode.init(rawValue:)) ?? .precise
         self.mode = mode
         self.powerPolicy = PowerPolicy(mode: mode)
-        let savedRoute = trackLog.todaysRoute(maxAccuracy: Self.matchAccuracy).map {
-            Coordinate(latitude: $0.latitude, longitude: $0.longitude)
+        let savedRoute = trackLog.todaysRoute(maxAccuracy: Self.matchAccuracy, gap: Self.routeGap).map { piece in
+            piece.map { Coordinate(latitude: $0.latitude, longitude: $0.longitude) }
         }
-        self.routeBuffer = Self.thinned(savedRoute)
+        self.routeBuffer = savedRoute.map(Self.thinned)
         self.todaysRoute = routeBuffer
         trackLog.appendEvent("start_appky", launchedForLocation ? "iOS appku znovu spustil kvůli poloze" : "spuštěno")
 
@@ -378,8 +382,13 @@ final class TrackingViewModel: ObservableObject {
             routeDay = day
             routeBuffer = []
         }
-        if let last = routeBuffer.last, Geo.distance(last, coord) < Self.routeSpacing { return }
-        routeBuffer.append(coord)
+        defer { lastRouteFix = time }
+        if routeBuffer.isEmpty || lastRouteFix.map({ time.timeIntervalSince($0) > Self.routeGap }) ?? true {
+            routeBuffer.append([coord])
+        } else {
+            if let last = routeBuffer[routeBuffer.count - 1].last, Geo.distance(last, coord) < Self.routeSpacing { return }
+            routeBuffer[routeBuffer.count - 1].append(coord)
+        }
         publishRoute(force: false)
     }
 
@@ -392,7 +401,7 @@ final class TrackingViewModel: ObservableObject {
             routeDay = Calendar.current.startOfDay(for: now)
             routeBuffer = []
         }
-        if todaysRoute.count != routeBuffer.count {
+        if todaysRoute.map(\.count) != routeBuffer.map(\.count) {
             todaysRoute = routeBuffer
         }
     }

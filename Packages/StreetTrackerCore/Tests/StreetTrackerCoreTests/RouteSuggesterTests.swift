@@ -38,6 +38,19 @@ final class RouteSuggesterTests: XCTestCase {
         XCTAssertEqual(suggestions.map(\.segmentID), ["walked", "near", "far"])
     }
 
+    func testStreetSplitIntoSeveralWaysIsListedOnce() {
+        var graph = makeGraph()
+        graph.segments["near2"] = StreetSegment(id: "near2", name: "Near St", points: [
+            Coordinate(latitude: 50.0802, longitude: 14.4001),
+            Coordinate(latitude: 50.0803, longitude: 14.4001)
+        ], lengthMeters: 11, district: "Malá Strana")
+        let origin = Coordinate(latitude: 50.0800, longitude: 14.4000)
+
+        let suggestions = RouteSuggester.nearestUnwalked(from: origin, graph: graph, coverage: CoverageStore())
+
+        XCTAssertEqual(suggestions.map(\.segmentID), ["walked", "near", "far"])
+    }
+
     func testLeastCompleteDistrictPicksLowestCoverage() {
         let coverage = CoverageStore()
         coverage.recordPass(segmentID: "walked") // Malá Strana: 1 of 2 segments' length walked

@@ -12,7 +12,13 @@ public enum DemoWalk {
     public static func route(in graph: StreetGraph, from start: Coordinate = defaultStart,
                              maxMeters: Double = 2500, step: Double = 4,
                              joinDistance: Double = 15) -> [Coordinate] {
-        let named = graph.segments.values.filter { $0.points.count >= 2 }
+        // Named streets drawn point to point; skips squares drawn as areas
+        // and long tunnels, which look like jumps across houses.
+        let named = graph.segments.values.filter { segment in
+            segment.name != nil && segment.points.count >= 2
+                && !(segment.name ?? "").localizedCaseInsensitiveContains("tunel")
+                && zip(segment.points, segment.points.dropFirst()).allSatisfy { Geo.distance($0, $1) <= 60 }
+        }
         guard var current = named.min(by: { nearest($0, start) < nearest($1, start) }) else { return [] }
         var used: Set<String> = [current.id]
         var points = Geo.distance(current.points.first!, start) <= Geo.distance(current.points.last!, start)

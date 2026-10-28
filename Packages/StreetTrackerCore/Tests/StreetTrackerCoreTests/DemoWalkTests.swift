@@ -10,10 +10,12 @@ final class DemoWalkTests: XCTestCase {
 
     func testFollowsConnectedStreetsWithSmallSteps() {
         let graph = StreetGraph(segments: [
-            "a": segment("a", [(50.0, 14.0), (50.0, 14.001)]),
+            "a": segment("a", [(50.0, 14.0), (50.0, 14.0005), (50.0, 14.001)]),
             // Stored backwards, so the walk has to turn it around.
-            "b": segment("b", [(50.001, 14.001), (50.0, 14.001)]),
+            "b": segment("b", [(50.001, 14.001), (50.0005, 14.001), (50.0, 14.001)]),
             "far": segment("far", [(50.01, 14.01), (50.011, 14.01)]),
+            // Drawn with a 110 m jump: never used.
+            "jump": segment("jump", [(50.001, 14.001), (50.002, 14.001)]),
         ])
         let route = DemoWalk.route(in: graph, from: Coordinate(latitude: 50.0, longitude: 14.0))
         XCTAssertEqual(route.first!.latitude, 50.0, accuracy: 1e-9)

@@ -9,6 +9,8 @@ struct PragueStreetTrackerApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appDelegate.viewModel)
+                // Screenshots of the dark look (UI tests).
+                .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-dark") ? .dark : nil)
         }
     }
 }

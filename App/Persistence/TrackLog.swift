@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import StreetTrackerCore
 
 /// Raw walk log: every GPS fix with its exact time and accuracy (nothing is
 /// filtered out here), one CSV file per day in Documents/trasy/, plus a
@@ -50,19 +51,23 @@ final class TrackLog {
         append(line, to: "udalosti-\(dayFormatter.string(from: time)).csv", header: Self.eventHeader)
     }
 
-    /// Today's fixes accurate enough to draw, for the route on the map.
-    func todaysRoute(maxAccuracy: Double) -> [CLLocationCoordinate2D] {
+    /// Today's fixes accurate enough to draw, for the route on the map,
+    /// split where the GPS was silent longer than `gap`.
+    func todaysRoute(maxAccuracy: Double, gap: TimeInterval) -> [[CLLocationCoordinate2D]] {
         let url = dir.appendingPathComponent("\(dayFormatter.string(from: Date())).csv")
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-        return text.split(separator: "\n").dropFirst().compactMap { line in
-            // cas,lat,lon,presnost_m,... — the quoted street fields come last.
-            let fields = line.split(separator: ",", maxSplits: 4, omittingEmptySubsequences: false)
-            guard fields.count >= 4,
-                  let lat = Double(fields[1]), let lon = Double(fields[2]),
-                  let accuracy = Double(fields[3]), accuracy >= 0, accuracy < maxAccuracy
-            else { return nil }
-            return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        var pieces: [[CLLocationCoordinate2D]] = []
+        var last: Date?
+        for fix in TrackCSV.parse(text) where fix.accuracy >= 0 && fix.accuracy < maxAccuracy {
+            let coord = CLLocationCoordinate2D(latitude: fix.coordinate.latitude, longitude: fix.coordinate.longitude)
+            if pieces.isEmpty || last.map({ fix.time.timeIntervalSince($0) > gap }) ?? true {
+                pieces.append([coord])
+            } else {
+                pieces[pieces.count - 1].append(coord)
+            }
+            last = fix.time
         }
+        return pieces
     }
 
     private func append(_ line: String, to name: String, header: String) {

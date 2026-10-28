@@ -38,8 +38,18 @@ public enum RouteSuggester {
                 )
             }
             .sorted { $0.distanceMeters < $1.distanceMeters }
+            .filter(onePerStreet())
             .prefix(limit)
             .map { $0 }
+    }
+
+    /// A street is several OSM ways; list it once, at its nearest piece.
+    private static func onePerStreet() -> (UnwalkedSuggestion) -> Bool {
+        var seen: Set<String> = []
+        return { suggestion in
+            guard let name = suggestion.name else { return true }
+            return seen.insert(name + "|" + (suggestion.district ?? "")).inserted
+        }
     }
 
     /// The least-complete district that isn't already fully walked, if any.

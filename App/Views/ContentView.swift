@@ -19,7 +19,8 @@ struct ContentView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(verbatim: "Prošlo \((viewModel.coverageFraction * 100).formatted(.number.precision(.fractionLength(1)))) % ulic Prahy")
+                    // Two decimals below 1 %, so the first walks show progress.
+                    Text(verbatim: "Prošlo \((viewModel.coverageFraction * 100).formatted(.number.precision(.fractionLength(viewModel.coverageFraction < 0.01 ? 2 : 1)))) % ulic Prahy")
                         .font(.headline)
                         .accessibilityIdentifier("pokryti")
                     Spacer()

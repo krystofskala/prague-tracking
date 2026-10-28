@@ -112,7 +112,7 @@ final class ScreenTests: XCTestCase {
         let coverage = app.staticTexts["pokryti"]
         XCTAssertTrue(coverage.waitForExistence(timeout: 30))
         // Streets load in a second or two, then the demo walk counts.
-        let walked = NSPredicate(format: "NOT (label CONTAINS ' 0,0 %' OR label CONTAINS ' 0.0 %')")
+        let walked = NSPredicate(format: "NOT (label CONTAINS ' 0,00 %' OR label CONTAINS ' 0.00 %')")
         let done = expectation(for: walked, evaluatedWith: coverage)
         wait(for: [done], timeout: 90)
         // Map tiles.

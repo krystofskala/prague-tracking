@@ -11,14 +11,15 @@ Packages/StreetTrackerCore/   Pure Swift, no Apple frameworks. Testable
   MapMatcher.swift               Snaps a GPS fix to the nearest segment
   CoverageStore.swift            Turns matched fixes into passes, pass counts
   CoverageSummary.swift          Coverage % kept up to date incrementally
-  PowerPolicy.swift              When GPS may drop to battery-saving accuracy
+  PowerPolicy.swift              Precise / saving mode: when fixes may be thinned out
+  WalkingSpeedDetector.swift     Walking noticed from GPS speed when Core Motion lags
   RouteSuggester.swift           Nearest-unwalked-street suggestions
   RingAssembler.swift            Stitches boundary way fragments into closed rings
   DistrictTagger.swift           Point-in-polygon tags segments with a cadastral district
 
 App/                           SwiftUI + MapKit + CoreLocation. Thin glue
                                over StreetTrackerCore; no domain logic here.
-  Location/LocationTracker.swift        CLLocationManager wrapper (background config)
+  Location/LocationTracker.swift        liveUpdates + background session (iOS 17), relaunch
   Location/WalkingActivityMonitor.swift Core Motion filter (skip car/bike fixes)
   Persistence/CoveragePersistence.swift   Local JSON file, on-device only
   ViewModels/TrackingViewModel.swift      Wires location -> matcher -> coverage -> disk
@@ -141,11 +142,21 @@ The street graph (~13 MB JSON, 32k segments), district tagging and the
 spatial index are built in a detached task at launch; the map shows a
 loading indicator meanwhile. On Linux CI (debug build) this takes ~2.5 s.
 
-While tracking, `PowerPolicy` switches GPS to 100 m accuracy / 50 m
-distance filter when Core Motion reports a vehicle, or standing still for
-2+ minutes (a stop during a ride stays in low power), and back to best
-accuracy as soon as you walk. Low-confidence readings keep the last state. Updates keep
-running in low power because a background app can't restart them.
+Tracking runs on iOS 17's `CLLocationUpdate.liveUpdates(.fitness)` while
+holding a `CLBackgroundActivitySession`, so iOS relaunches the app in the
+background if it ends it mid-walk (significant location changes are a
+second way back in). `AppDelegate` owns `TrackingViewModel`, because no
+SwiftUI view exists on a background relaunch. iOS pauses GPS by itself
+while you stand still.
+
+GPS always runs at full accuracy. Every fix goes to the daily CSV with its
+accuracy; only fixes under 50 m snap to streets and draw the orange route.
+In **saving** mode (`PowerPolicy`, chosen in the app; **precise** is the
+default) fixes are thinned to one per 30 s while Core Motion reports a
+vehicle or 2+ minutes of standing still. A steady walking pace from GPS
+(`WalkingSpeedDetector`, 30 s) ends saving mode and counts as walking even
+before Core Motion catches up after a ride. Mode switches, relaunches and
+location errors go to `trasy/udalosti-YYYY-MM-DD.csv`.
 
 ## Things to sanity-check on a real device
 

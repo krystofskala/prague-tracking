@@ -32,9 +32,12 @@ final class WalkingActivityMonitor: ObservableObject {
     }
 
     private static func classify(_ activity: CMMotionActivity) -> PowerPolicy.Activity {
+        // Walking counts even at low confidence: right after a ride Core
+        // Motion is unsure for a while, and ignoring it thinned out the
+        // start of the walk.
+        if activity.walking || activity.running { return .walking }
         guard activity.confidence != .low else { return .unknown }
         if activity.automotive || activity.cycling { return .vehicle }
-        if activity.walking || activity.running { return .walking }
         if activity.stationary { return .stationary }
         return .unknown
     }
@@ -42,6 +45,7 @@ final class WalkingActivityMonitor: ObservableObject {
     private static func shouldTrack(_ activity: CMMotionActivity) -> Bool {
         // Only reject on confident automotive/cycling readings; low-confidence
         // or ambiguous readings fall through to "keep tracking".
+        if activity.walking || activity.running { return true }
         if activity.automotive && activity.confidence != .low { return false }
         if activity.cycling && activity.confidence != .low { return false }
         return true

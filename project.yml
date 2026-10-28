@@ -2,7 +2,7 @@ name: PragueStreetTracker
 options:
   bundleIdPrefix: com.krystofskala
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "17.0"
 
 packages:
   StreetTrackerCore:

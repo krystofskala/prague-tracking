@@ -1,13 +1,14 @@
 import SwiftUI
 import CoreLocation
+import StreetTrackerCore
 
 struct ContentView: View {
-    @StateObject private var viewModel = TrackingViewModel()
+    @EnvironmentObject private var viewModel: TrackingViewModel
     @State private var showingSuggestions = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            MapView(graph: viewModel.graph, passCounts: viewModel.passCounts)
+            MapView(graph: viewModel.graph, passCounts: viewModel.passCounts, route: viewModel.todaysRoute)
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 8) {
@@ -20,6 +21,12 @@ struct ContentView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
+
+                Picker("Režim", selection: $viewModel.mode) {
+                    Text("Přesný").tag(PowerPolicy.Mode.precise)
+                    Text("Úsporný").tag(PowerPolicy.Mode.saving)
+                }
+                .pickerStyle(.segmented)
 
                 if viewModel.isTracking {
                     Text(verbatim: "Nahrávám trasu · \(viewModel.loggedPoints) bodů (Soubory › Prague Streets › trasy)")

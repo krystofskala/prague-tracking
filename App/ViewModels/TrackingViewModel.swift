@@ -16,6 +16,15 @@ final class TrackingViewModel: ObservableObject {
     @Published private(set) var suggestions: [UnwalkedSuggestion] = []
     /// GPS points written to the walk log since the app started.
     @Published private(set) var loggedPoints = 0
+    /// Today's route as recorded (accurate fixes only), drawn under the streets.
+    @Published private(set) var todaysRoute: [Coordinate] = []
+    @Published var mode: PowerPolicy.Mode {
+        didSet {
+            powerPolicy.mode = mode
+            UserDefaults.standard.set(mode.rawValue, forKey: Self.modeKey)
+            trackLog.appendEvent("rezim", mode == .precise ? "přesný" : "úsporný")
+        }
+    }
 
     private let coverageStore: CoverageStore
     private var coverageSummary = CoverageSummary(graph: StreetGraph(segments: [:]), passCounts: [:])
@@ -24,14 +33,23 @@ final class TrackingViewModel: ObservableObject {
     private let locationTracker: LocationTracker
     private let motionMonitor = WalkingActivityMonitor()
     private var powerPolicy = PowerPolicy()
+    private var speedDetector = WalkingSpeedDetector()
+    /// Fixes worse than this still go to the log, but don't snap to streets
+    /// or draw on the map.
+    private static let matchAccuracy: Double = 50
+    /// In saving mode while riding or standing, process one fix this often.
+    private static let lowPowerInterval: TimeInterval = 30
+    private var lastProcessedFix: Date?
+    private var wasLowPower = false
     private let persistence: CoveragePersistence
     private let trackLog = TrackLog()
     /// Remembered so tracking continues by itself if iOS ended the app
     /// mid-walk and it gets opened again.
     private static let trackingKey = "trackingOn"
+    private static let modeKey = "trackingMode"
     private var cancellables: Set<AnyCancellable> = []
 
-    init() {
+    init(launchedForLocation: Bool = false) {
         let persistence = CoveragePersistence()
         let savedCounts = persistence.loadPassCounts()
 
@@ -39,9 +57,19 @@ final class TrackingViewModel: ObservableObject {
         self.coverageStore = CoverageStore(passCounts: savedCounts)
         self.passCounts = savedCounts
         self.locationTracker = LocationTracker()
+        let mode = UserDefaults.standard.string(forKey: Self.modeKey).flatMap(PowerPolicy.Mode.init(rawValue:)) ?? .precise
+        self.mode = mode
+        self.powerPolicy = PowerPolicy(mode: mode)
+        self.todaysRoute = trackLog.todaysRoute(maxAccuracy: Self.matchAccuracy).map {
+            Coordinate(latitude: $0.latitude, longitude: $0.longitude)
+        }
+        trackLog.appendEvent("start_appky", launchedForLocation ? "iOS appku znovu spustil kvůli poloze" : "spuštěno")
 
         locationTracker.onLocation = { [weak self] location in
             self?.handle(location: location)
+        }
+        locationTracker.onEvent = { [weak self] kind, detail in
+            self?.trackLog.appendEvent(kind, detail)
         }
         locationTracker.$authorizationStatus
             .receive(on: RunLoop.main)
@@ -105,18 +133,21 @@ final class TrackingViewModel: ObservableObject {
             motionMonitor.stop()
             isTracking = false
             UserDefaults.standard.set(false, forKey: Self.trackingKey)
+            trackLog.appendEvent("sber", "zastaveno")
         } else {
             startTracking()
         }
     }
 
     private func startTracking() {
-        powerPolicy = PowerPolicy()
-        locationTracker.setLowPower(false)
+        powerPolicy = PowerPolicy(mode: mode)
+        speedDetector = WalkingSpeedDetector()
+        wasLowPower = false
         locationTracker.startTracking()
         motionMonitor.start()
         isTracking = true
         UserDefaults.standard.set(true, forKey: Self.trackingKey)
+        trackLog.appendEvent("sber", "spuštěno")
     }
 
     func refreshSuggestions(limit: Int = 20) {
@@ -125,26 +156,43 @@ final class TrackingViewModel: ObservableObject {
     }
 
     private func handle(location: CLLocation) {
-        let coord = Coordinate(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
-        lastLocation = coord
+        let now = location.timestamp
+        speedDetector.observe(speed: location.speed, at: now)
+        if speedDetector.isWalking(at: now) {
+            // Core Motion can lag minutes behind after a ride; a steady
+            // walking pace is enough to leave saving mode.
+            powerPolicy.update(.walking, at: now)
+        }
         // The delayed re-check below may not run while iOS suspends the app
         // between fixes, so re-evaluate on every fix too.
-        applyPowerMode()
+        let lowPower = applyPowerMode()
+        if lowPower, let last = lastProcessedFix, now.timeIntervalSince(last) < Self.lowPowerInterval {
+            return
+        }
+        lastProcessedFix = now
 
-        // Log every fix (walking or not) before any filtering, so the whole
-        // route with exact times survives even if matching rules change.
-        let matched = matcher?.match(coord)
+        let isAccurate = location.horizontalAccuracy >= 0 && location.horizontalAccuracy < Self.matchAccuracy
+        let coord = Coordinate(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
+        let walking = motionMonitor.isLikelyWalking || speedDetector.isWalking(at: now)
+
+        // Log every fix (walking or not, accurate or not) before any
+        // filtering, so the whole route with exact times survives and can be
+        // recomputed if matching rules change.
+        let matched = isAccurate ? matcher?.match(coord) : nil
         let segment = matched.flatMap { graph.segments[$0.segmentID] }
         trackLog.append(
             location,
-            isWalking: motionMonitor.isLikelyWalking,
+            isWalking: walking,
             street: segment.map { TrackLog.StreetInfo(name: $0.name, district: $0.district) }
         )
         loggedPoints += 1
+        guard isAccurate else { return }
+        lastLocation = coord
+        todaysRoute.append(coord)
 
-        guard motionMonitor.isLikelyWalking else { return }
+        guard walking else { return }
         guard let match = matched else { return }
-        // Fixes come every ~10 m; only a new pass changes counts, map and file.
+        // Fixes come every few metres; only a new pass changes counts, map and file.
         let length = graph.segments[match.segmentID]?.lengthMeters ?? .infinity
         guard coverageStore.recordFix(on: match.segmentID, at: location.timestamp, segmentLengthMeters: length) else { return }
 
@@ -168,8 +216,14 @@ final class TrackingViewModel: ObservableObject {
         }
     }
 
-    private func applyPowerMode() {
-        locationTracker.setLowPower(powerPolicy.isLowPower(at: Date()))
+    @discardableResult
+    private func applyPowerMode() -> Bool {
+        let lowPower = powerPolicy.isLowPower(at: Date())
+        if lowPower != wasLowPower {
+            wasLowPower = lowPower
+            trackLog.appendEvent("uspora", lowPower ? "zapnuta (řidší body)" : "vypnuta (všechny body)")
+        }
+        return lowPower
     }
 
     private func publishCoverage() {

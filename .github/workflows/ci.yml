@@ -34,3 +34,37 @@ jobs:
             -scheme PragueStreetTracker \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO
+
+  ui-tests:
+    name: UI tests + screenshots (simulator, demo walk)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Pick a simulator
+        id: sim
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for r,l in sorted(d.items(), reverse=True) if 'iOS' in r for x in l if x['name'].startswith('iPhone') and 'Pro' in x['name']))")
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+      - name: Run UI tests
+        run: |
+          xcodebuild test \
+            -project PragueStreetTracker.xcodeproj \
+            -scheme PragueStreetTracker \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath UITests.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Export screenshots
+        if: always()
+        run: |
+          mkdir -p screenshots
+          xcrun xcresulttool export attachments --path UITests.xcresult --output-path screenshots || true
+          ls -la screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots

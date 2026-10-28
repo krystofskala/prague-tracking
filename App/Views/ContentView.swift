@@ -8,13 +8,15 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            MapView(graph: viewModel.graph, passCounts: viewModel.passCounts, route: viewModel.todaysRoute)
+            MapView(graph: viewModel.graph, passCounts: viewModel.passCounts, route: viewModel.todaysRoute,
+                    centerOnRoute: viewModel.isDemo)
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text(verbatim: "Prošlo \((viewModel.coverageFraction * 100).formatted(.number.precision(.fractionLength(1)))) % ulic Prahy")
                         .font(.headline)
+                        .accessibilityIdentifier("pokryti")
                     Spacer()
                     Button(viewModel.isTracking ? "Zastavit" : "Začít") {
                         viewModel.toggleTracking()

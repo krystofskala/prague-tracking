@@ -39,3 +39,26 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  PragueStreetTrackerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: PragueStreetTracker
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.krystofskala.praguestreettracker.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1"
+
+schemes:
+  PragueStreetTracker:
+    build:
+      targets:
+        PragueStreetTracker: all
+    test:
+      targets:
+        - PragueStreetTrackerUITests

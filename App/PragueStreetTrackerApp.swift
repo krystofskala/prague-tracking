@@ -24,7 +24,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        viewModel = TrackingViewModel(launchedForLocation: launchOptions?[.location] != nil)
+        viewModel = TrackingViewModel(
+            launchedForLocation: launchOptions?[.location] != nil,
+            demo: ProcessInfo.processInfo.arguments.contains("-demo")
+        )
         return true
     }
 }

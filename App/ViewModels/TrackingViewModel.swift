@@ -57,8 +57,12 @@ final class TrackingViewModel: ObservableObject {
     private static let trackingKey = "trackingOn"
     private static let modeKey = "trackingMode"
     private var cancellables: Set<AnyCancellable> = []
+    /// Launched with `-demo` (UI tests, screenshots): no real location, a
+    /// made-up walk through Old Town is played in instead.
+    let isDemo: Bool
 
-    init(launchedForLocation: Bool = false) {
+    init(launchedForLocation: Bool = false, demo: Bool = false) {
+        self.isDemo = demo
         let persistence = CoveragePersistence()
         let savedCounts = persistence.loadPassCounts()
 
@@ -100,7 +104,7 @@ final class TrackingViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        if UserDefaults.standard.bool(forKey: Self.trackingKey) {
+        if !demo, UserDefaults.standard.bool(forKey: Self.trackingKey) {
             startTracking()
         }
 
@@ -117,7 +121,22 @@ final class TrackingViewModel: ObservableObject {
             self.coverageSummary = CoverageSummary(graph: graph, passCounts: coverageStore.passCounts)
             publishCoverage()
             isLoadingStreets = false
+            if demo { playDemoWalk() }
         }
+    }
+
+    private func playDemoWalk() {
+        let route = DemoWalk.route(in: graph)
+        let start = Date().addingTimeInterval(-3 * Double(route.count))
+        for (i, coord) in route.enumerated() {
+            handle(location: CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: coord.latitude, longitude: coord.longitude),
+                altitude: 0, horizontalAccuracy: 5, verticalAccuracy: -1,
+                course: -1, speed: 1.3, timestamp: start.addingTimeInterval(3 * Double(i))
+            ))
+        }
+        isTracking = true
+        publishRoute(force: true)
     }
 
     nonisolated private static func loadBundledGraph() -> StreetGraph {
@@ -140,10 +159,15 @@ final class TrackingViewModel: ObservableObject {
     }
 
     func requestPermission() {
+        guard !isDemo else { return }
         locationTracker.requestAuthorization()
     }
 
     func toggleTracking() {
+        if isDemo {
+            isTracking.toggle()
+            return
+        }
         if locationTracker.isTracking {
             locationTracker.stopTracking()
             motionMonitor.stop()

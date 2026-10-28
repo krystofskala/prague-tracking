@@ -18,6 +18,8 @@ struct MapView: UIViewRepresentable {
     let graph: StreetGraph
     let passCounts: [String: Int]
     let route: [Coordinate]
+    /// Zoom to the route once it appears (demo/screenshots).
+    var centerOnRoute = false
 
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -76,6 +78,11 @@ struct MapView: UIViewRepresentable {
         let overlay = RoutePolyline(coordinates: coords, count: coords.count)
         coordinator.routeOverlay = overlay
         mapView.insertOverlay(overlay, at: 0)
+        if centerOnRoute, !coordinator.centeredOnRoute {
+            coordinator.centeredOnRoute = true
+            let padding = UIEdgeInsets(top: 60, left: 40, bottom: 260, right: 40)
+            mapView.setVisibleMapRect(overlay.boundingMapRect, edgePadding: padding, animated: false)
+        }
     }
 
     /// Line width stops growing at 7 passes (2 + 7 * 1.5 > 12 cap).
@@ -97,6 +104,7 @@ struct MapView: UIViewRepresentable {
         var passCounts: [String: Int] = [:]
         var routeOverlay: RoutePolyline?
         var routeCount = -1
+        var centeredOnRoute = false
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let route = overlay as? RoutePolyline {

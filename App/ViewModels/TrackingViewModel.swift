@@ -34,6 +34,8 @@ final class TrackingViewModel: ObservableObject {
     /// Every walk anywhere in the world, newest first.
     @Published private(set) var walks: [Walk] = []
     @Published private(set) var walkMeta: [String: WalkMeta] = [:]
+    /// Streets marked as walked by hand (long press on the map).
+    @Published private(set) var manualStreets: Set<String> = []
     /// Name of the Obsidian folder, nil until one is picked.
     @Published private(set) var obsidianFolderName: String?
     /// One line about the last export / backup / import, for the settings.
@@ -142,6 +144,7 @@ final class TrackingViewModel: ObservableObject {
             syncWalks()
         }
         walkMeta = walkLibrary.loadMeta()
+        manualStreets = walkLibrary.loadManualStreets()
         obsidianFolderName = obsidian.folder?.lastPathComponent
     }
 
@@ -157,7 +160,8 @@ final class TrackingViewModel: ObservableObject {
         Task {
             let (walks, written) = await Task.detached(priority: .utility) {
                 let walks = library.loadWalks()
-                return (walks, obsidian.export(walks, meta: meta))
+                let edited = walks.compactMap { $0.applying(meta[$0.id]?.edit) }
+                return (walks, obsidian.export(edited, meta: meta))
             }.value
             self.walks = walks
             if let written, written > 0 {
@@ -183,13 +187,84 @@ final class TrackingViewModel: ObservableObject {
     }
 
     func updateMeta(_ meta: WalkMeta, for walkID: String) {
+        let editChanged = walkMeta[walkID]?.edit != meta.edit
         walkMeta[walkID] = meta
         walkLibrary.saveMeta(walkMeta)
         syncWalks()
+        if editChanged { rebuildCoverage() }
+    }
+
+    // MARK: Editing walks and streets (E3)
+
+    /// The walk as the person edited it; nil when all of it was removed.
+    func edited(_ walk: Walk) -> Walk? {
+        walk.applying(walkMeta[walk.id]?.edit)
+    }
+
+    /// Every tag in use, for filtering and suggestions.
+    var allTags: [String] {
+        Array(Set(walkMeta.values.flatMap(\.tags))).sorted { $0.localizedCompare($1) == .orderedAscending }
+    }
+
+    /// For snapping a finger-drawn piece to streets (nil while loading).
+    var streetMatcher: MapMatcher? { matcher }
+
+    func street(near coordinate: Coordinate) -> StreetSegment? {
+        matcher?.match(coordinate).flatMap { graph.segments[$0.segmentID] }
+    }
+
+    /// "Tuhle ulici jsem prošel" and back.
+    func toggleManual(_ segmentID: String) {
+        if manualStreets.contains(segmentID) {
+            manualStreets.remove(segmentID)
+        } else {
+            manualStreets.insert(segmentID)
+        }
+        walkLibrary.saveManualStreets(manualStreets)
+        trackLog.appendEvent("rucne", segmentID)
+        rebuildCoverage()
+    }
+
+    /// Recomputes pass counts from every logged fix, the walk edits, the
+    /// streets marked by hand and the passes from before the log.
+    func rebuildCoverage() {
+        guard let matcher else { return }
+        let library = walkLibrary, graph = graph, meta = walkMeta, manual = manualStreets
+        let current = coverageStore.passCounts
+        Task {
+            let counts = await Task.detached(priority: .userInitiated) { () -> [String: Int] in
+                let fixes = library.loadFixes()
+                let legacy = library.loadLegacy() ?? {
+                    let fromLog = CoverageRebuild.passCounts(fixes: fixes, graph: graph, matcher: matcher)
+                    let legacy = CoverageRebuild.legacyCounts(current: current, fromLog: fromLog)
+                    library.saveLegacy(legacy)
+                    return legacy
+                }()
+                let walks = WalkSplitter.walks(from: fixes)
+                let edits = walks.compactMap { walk in meta[walk.id]?.edit.map { (walk, $0) } }
+                return CoverageRebuild.passCounts(
+                    fixes: fixes,
+                    excluded: edits.flatMap { $0.1.excludedRanges(of: $0.0) },
+                    drawn: edits.flatMap { $0.1.drawn },
+                    manualSegments: manual,
+                    legacy: legacy,
+                    graph: graph,
+                    matcher: matcher
+                )
+            }.value
+            coverageStore.replacePassCounts(counts)
+            passCounts = counts
+            coverageSummary = CoverageSummary(graph: graph, passCounts: counts)
+            publishCoverage()
+            persistence.savePassCounts(counts)
+            trackLog.appendEvent("prepocet", "ulic s průchodem: \(counts.count)")
+            refreshSuggestions()
+        }
     }
 
     func backup() {
-        let files = walkLibrary.csvFiles + [persistence.fileURL, walkLibrary.metaFile]
+        let files = walkLibrary.csvFiles + [persistence.fileURL, walkLibrary.metaFile,
+                                            walkLibrary.manualFile, walkLibrary.legacyFile]
         dataStatus = obsidian.backup(files: files)
             ? "Záloha uložená do složky zaloha"
             : "Zálohu se nepovedlo uložit, vyber složku Obsidianu znovu."
@@ -204,6 +279,8 @@ final class TrackingViewModel: ObservableObject {
             switch name {
             case "coverage.json": return persistence.fileURL
             case "walk-meta.json": return walkLibrary.metaFile
+            case "rucne-prosle-ulice.json": return walkLibrary.manualFile
+            case "pokryti-pred-csv.json": return walkLibrary.legacyFile
             default:
                 guard name.hasSuffix(".csv") else { return nil }
                 return walkLibrary.trasyDir.appendingPathComponent(name)
@@ -217,6 +294,7 @@ final class TrackingViewModel: ObservableObject {
         coverageSummary = CoverageSummary(graph: graph, passCounts: merged)
         publishCoverage()
         walkMeta = walkLibrary.loadMeta()
+        manualStreets = walkLibrary.loadManualStreets()
         dataStatus = "Obnoveno souborů: \(restored)"
         trackLog.appendEvent("obnova", dataStatus ?? "")
         syncWalks()

@@ -20,10 +20,14 @@ struct MapView: UIViewRepresentable {
     let route: [[Coordinate]]
     /// Zoom to the route once it appears (demo/screenshots).
     var centerOnRoute = false
+    /// Long press: "tuhle ulici jsem prošel".
+    var onLongPress: ((Coordinate) -> Void)?
 
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
         mapView.delegate = context.coordinator
+        let press = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.longPressed(_:)))
+        mapView.addGestureRecognizer(press)
         mapView.showsUserLocation = true
         centerOnPrague(mapView)
         return mapView
@@ -33,6 +37,7 @@ struct MapView: UIViewRepresentable {
         // SwiftUI calls this on every published change (each GPS fix, the
         // tracking toggle, ...); only rebuild overlays when the data changed.
         let coordinator = context.coordinator
+        coordinator.onLongPress = onLongPress
         updateRoute(mapView, coordinator: coordinator)
         guard graph.segments.count != coordinator.segmentCount || passCounts != coordinator.passCounts else {
             return
@@ -109,6 +114,13 @@ struct MapView: UIViewRepresentable {
         var routeOverlay: RoutePolyline?
         var routeCount = -1
         var centeredOnRoute = false
+        var onLongPress: ((Coordinate) -> Void)?
+
+        @objc func longPressed(_ gesture: UILongPressGestureRecognizer) {
+            guard gesture.state == .began, let mapView = gesture.view as? MKMapView else { return }
+            let c = mapView.convert(gesture.location(in: mapView), toCoordinateFrom: mapView)
+            onLongPress?(Coordinate(latitude: c.latitude, longitude: c.longitude))
+        }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let route = overlay as? RoutePolyline {

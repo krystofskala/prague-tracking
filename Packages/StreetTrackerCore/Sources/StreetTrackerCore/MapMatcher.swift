@@ -51,4 +51,20 @@ public final class MapMatcher: @unchecked Sendable {
         guard let match = best, match.distanceMeters <= maxMatchDistanceMeters else { return nil }
         return match
     }
+
+    /// The nearest point on the nearest street, for drawing a missed piece
+    /// of a walk by finger; nil away from streets.
+    public func snap(_ location: Coordinate) -> Coordinate? {
+        guard let match = match(location), let segment = graph.segments[match.segmentID] else { return nil }
+        var best: (x: Double, y: Double) = (0, 0)
+        var bestDistance = Double.greatestFiniteMagnitude
+        for i in 1..<segment.points.count {
+            let a = Geo.toLocalMeters(segment.points[i - 1], origin: location)
+            let b = Geo.toLocalMeters(segment.points[i], origin: location)
+            let p = Geo.projection(p: (0, 0), a: a, b: b)
+            let d = (p.x * p.x + p.y * p.y).squareRoot()
+            if d < bestDistance { bestDistance = d; best = p }
+        }
+        return Geo.fromLocalMeters(best, origin: location)
+    }
 }

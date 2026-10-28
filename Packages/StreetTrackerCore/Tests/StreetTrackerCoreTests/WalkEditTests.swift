@@ -103,6 +103,16 @@ final class WalkEditTests: XCTestCase {
         XCTAssertEqual(counts["north"], 3)
     }
 
+    func testSnapLandsOnStreet() {
+        let g = graph()
+        let matcher = MapMatcher(graph: g)
+        // 10 m east of the north street.
+        let snapped = matcher.snap(Coordinate(latitude: 50.001, longitude: 14.40014))!
+        XCTAssertEqual(snapped.longitude, 14.4, accuracy: 1e-7)
+        XCTAssertEqual(snapped.latitude, 50.001, accuracy: 1e-7)
+        XCTAssertNil(matcher.snap(Coordinate(latitude: 50.5, longitude: 14.9)))
+    }
+
     func testLegacyIsWhatTheLogCannotExplain() {
         let legacy = CoverageRebuild.legacyCounts(current: ["a": 5, "b": 1, "c": 2], fromLog: ["a": 2, "b": 1, "c": 4])
         XCTAssertEqual(legacy, ["a": 3])

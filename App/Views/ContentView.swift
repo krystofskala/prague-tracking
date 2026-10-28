@@ -7,11 +7,14 @@ struct ContentView: View {
     @State private var showingSuggestions = false
     @State private var showingWalks = false
     @State private var showingData = false
+    /// Long-pressed street, asking "prošel jsem ji?".
+    @State private var pressedStreet: StreetSegment?
 
     var body: some View {
         ZStack(alignment: .bottom) {
             MapView(graph: viewModel.graph, passCounts: viewModel.passCounts, route: viewModel.todaysRoute,
-                    centerOnRoute: viewModel.isDemo)
+                    centerOnRoute: viewModel.isDemo,
+                    onLongPress: { pressedStreet = viewModel.street(near: $0) })
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 8) {
@@ -83,6 +86,21 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingData) {
             DataView().environmentObject(viewModel)
+        }
+        .confirmationDialog(
+            pressedStreet?.name ?? "Ulice bez jména",
+            isPresented: Binding(get: { pressedStreet != nil }, set: { if !$0 { pressedStreet = nil } }),
+            titleVisibility: .visible,
+            presenting: pressedStreet
+        ) { street in
+            if viewModel.manualStreets.contains(street.id) {
+                Button("Zrušit ruční označení") { viewModel.toggleManual(street.id) }
+            } else if viewModel.passCounts[street.id, default: 0] == 0 {
+                Button("Tenhle úsek jsem prošel") { viewModel.toggleManual(street.id) }
+            }
+        } message: { street in
+            let n = viewModel.passCounts[street.id, default: 0]
+            Text(n == 0 ? "Zatím neprošlá." : "Prošlá \(n)×" + (viewModel.manualStreets.contains(street.id) ? " (označeno ručně)" : ""))
         }
     }
 

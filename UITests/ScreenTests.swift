@@ -45,7 +45,48 @@ final class ScreenTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Délka"].waitForExistence(timeout: 10))
         _ = XCTWaiter.wait(for: [XCTestExpectation(description: "tiles")], timeout: 4)
         screenshot("6-detail-prochazky")
+
+        // E3: name, tag, colour.
+        let name = app.textFields["nazev"]
+        name.tap()
+        name.typeText("Staré Město večer\n")
+        let tag = app.textFields["novy-stitek"]
+        tag.tap()
+        tag.typeText("večer\n")
+        app.buttons["Barva #af52de"].tap()
+        XCTAssertTrue(app.buttons["#večer"].waitForExistence(timeout: 5))
+        screenshot("6b-nazev-stitek-barva")
+
+        app.buttons["Upravit trasu"].tap()
+        XCTAssertTrue(app.navigationBars["Upravit trasu"].waitForExistence(timeout: 10))
+        _ = XCTWaiter.wait(for: [XCTestExpectation(description: "tiles")], timeout: 4)
+        app.sliders.element(boundBy: 0).adjust(toNormalizedSliderPosition: 0.15)
+        screenshot("6c-oriznuti-zacatku")
+        app.buttons["Smazat kus"].tap()
+        app.sliders.element(boundBy: 1).adjust(toNormalizedSliderPosition: 0.6)
+        app.sliders.element(boundBy: 0).adjust(toNormalizedSliderPosition: 0.4)
+        screenshot("6d-vyber-kusu-ke-smazani")
+        app.buttons["Smazat vybraný kus"].tap()
+        app.buttons["Dokreslit"].tap()
+        screenshot("6e-dokreslit")
+        app.buttons["Uložit"].tap()
+        XCTAssertTrue(app.buttons["Vrátit původní trasu"].waitForExistence(timeout: 10))
+        _ = XCTWaiter.wait(for: [XCTestExpectation(description: "rebuild")], timeout: 3)
+        screenshot("6f-upravena-prochazka")
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Staré Město večer"].waitForExistence(timeout: 10))
+        screenshot("6g-seznam-se-stitky")
         closeSheet()
+
+        // Long press a street: "tenhle úsek jsem prošel".
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).press(forDuration: 1.2)
+        _ = XCTWaiter.wait(for: [XCTestExpectation(description: "dialog")], timeout: 2)
+        screenshot("6h-dlouhe-podrzeni-ulice")
+        if app.buttons["Tenhle úsek jsem prošel"].exists {
+            app.buttons["Tenhle úsek jsem prošel"].tap()
+        } else if app.buttons["Zrušit"].exists {
+            app.buttons["Zrušit"].tap()
+        }
 
         app.buttons["Data"].tap()
         XCTAssertTrue(app.buttons["Vybrat složku v trezoru"].waitForExistence(timeout: 10))

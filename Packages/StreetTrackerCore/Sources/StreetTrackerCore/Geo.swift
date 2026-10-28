@@ -48,6 +48,27 @@ public enum Geo {
         return (x, y)
     }
 
+    public static func fromLocalMeters(_ p: (x: Double, y: Double), origin: Coordinate) -> Coordinate {
+        let latRad = origin.latitude * .pi / 180
+        return Coordinate(
+            latitude: origin.latitude + p.y / earthRadiusMeters * 180 / .pi,
+            longitude: origin.longitude + p.x / (earthRadiusMeters * cos(latRad)) * 180 / .pi
+        )
+    }
+
+    /// Nearest point of the segment `[a, b]` to `p`, all in local meters.
+    public static func projection(
+        p: (x: Double, y: Double),
+        a: (x: Double, y: Double),
+        b: (x: Double, y: Double)
+    ) -> (x: Double, y: Double) {
+        let dx = b.x - a.x, dy = b.y - a.y
+        let lengthSquared = dx * dx + dy * dy
+        guard lengthSquared > 0 else { return a }
+        let t = max(0, min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared))
+        return (a.x + t * dx, a.y + t * dy)
+    }
+
     /// Shortest distance from point `p` to the segment `[a, b]`, all in local meters.
     public static func pointToSegmentDistance(
         p: (x: Double, y: Double),

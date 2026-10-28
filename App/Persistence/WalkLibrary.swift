@@ -7,6 +7,8 @@ final class WalkLibrary: @unchecked Sendable {
     let trasyDir: URL
     let importDir: URL
     private let metaURL: URL
+    let manualFile: URL
+    let legacyFile: URL
 
     init() {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -15,6 +17,8 @@ final class WalkLibrary: @unchecked Sendable {
         try? FileManager.default.createDirectory(at: importDir, withIntermediateDirectories: true)
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         metaURL = support.appendingPathComponent("walk-meta.json")
+        manualFile = support.appendingPathComponent("rucne-prosle-ulice.json")
+        legacyFile = support.appendingPathComponent("pokryti-pred-csv.json")
     }
 
     /// Fix CSVs: `RRRR-MM-DD.csv` and everything in `import/`.
@@ -34,11 +38,40 @@ final class WalkLibrary: @unchecked Sendable {
             let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
             return (modified ?? .distantFuture) >= changedSince
         }
-        let fixes = files.flatMap { url -> [Fix] in
+        return WalkSplitter.walks(from: fixes(in: files)).sorted { $0.start > $1.start }
+    }
+
+    /// Every logged fix, for recomputing coverage. Call off the main thread.
+    func loadFixes() -> [Fix] { fixes(in: csvFiles) }
+
+    private func fixes(in files: [URL]) -> [Fix] {
+        files.flatMap { url -> [Fix] in
             guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
             return TrackCSV.parse(text)
         }
-        return WalkSplitter.walks(from: fixes).sorted { $0.start > $1.start }
+    }
+
+    /// Streets marked "tuhle jsem prošel" by hand (segment IDs).
+    func loadManualStreets() -> Set<String> {
+        guard let data = try? Data(contentsOf: manualFile) else { return [] }
+        return (try? JSONDecoder().decode(Set<String>.self, from: data)) ?? []
+    }
+
+    func saveManualStreets(_ ids: Set<String>) {
+        guard let data = try? JSONEncoder().encode(ids.sorted()) else { return }
+        try? data.write(to: manualFile, options: .atomic)
+    }
+
+    /// Passes the CSV log can't explain (walked before it existed); taken
+    /// once at the first recompute. Nil until then.
+    func loadLegacy() -> [String: Int]? {
+        guard let data = try? Data(contentsOf: legacyFile) else { return nil }
+        return try? JSONDecoder().decode([String: Int].self, from: data)
+    }
+
+    func saveLegacy(_ counts: [String: Int]) {
+        guard let data = try? JSONEncoder().encode(counts) else { return }
+        try? data.write(to: legacyFile, options: .atomic)
     }
 
     func loadMeta() -> [String: WalkMeta] {

@@ -91,4 +91,10 @@ final class WalkTests: XCTestCase {
         XCTAssertFalse(rewritten.contains("barva:"))
         XCTAssertEqual(WalkNote.merge(generated: "x", existing: nil), "x")
     }
+
+    func testReplacePassCounts() {
+        let store = CoverageStore(passCounts: ["a": 1])
+        store.replacePassCounts(["b": 3])
+        XCTAssertEqual(store.passCounts, ["b": 3])
+    }
 }

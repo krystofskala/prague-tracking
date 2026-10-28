@@ -35,13 +35,37 @@ final class ScreenTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Neprošlé ulice poblíž"].waitForExistence(timeout: 10))
         XCTAssertGreaterThan(app.cells.count, 0, "suggestions near the demo walk")
         screenshot("4-navrhy-neproslych-ulic")
+        closeSheet()
+
+        app.buttons["Procházky"].tap()
+        XCTAssertTrue(app.navigationBars["Procházky"].waitForExistence(timeout: 10))
+        let firstWalk = app.cells.firstMatch
+        XCTAssertTrue(firstWalk.waitForExistence(timeout: 20), "the demo walk is listed")
+        screenshot("5-seznam-prochazek")
+        firstWalk.tap()
+        XCTAssertTrue(app.staticTexts["Délka"].waitForExistence(timeout: 10))
+        _ = XCTWaiter.wait(for: [XCTestExpectation(description: "tiles")], timeout: 4)
+        screenshot("6-detail-prochazky")
+        closeSheet()
+
+        app.buttons["Data"].tap()
+        XCTAssertTrue(app.buttons["Vybrat složku v trezoru"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Importovat GPX…"].exists)
+        screenshot("7-data-obsidian-zaloha-import")
+        closeSheet()
+    }
+
+    private func closeSheet() {
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+            .press(forDuration: 0.1, thenDragTo: app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        XCTAssertTrue(app.staticTexts["pokryti"].waitForExistence(timeout: 10))
     }
 
     func testDarkMode() {
         XCUIDevice.shared.appearance = .dark
         app.launch()
         waitForDemoWalk()
-        screenshot("5-tmavy-rezim")
+        screenshot("8-tmavy-rezim")
         XCUIDevice.shared.appearance = .light
     }
 

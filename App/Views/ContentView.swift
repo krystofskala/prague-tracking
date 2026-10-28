@@ -5,6 +5,8 @@ import StreetTrackerCore
 struct ContentView: View {
     @EnvironmentObject private var viewModel: TrackingViewModel
     @State private var showingSuggestions = false
+    @State private var showingWalks = false
+    @State private var showingData = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -53,11 +55,16 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Button("Navrhni neprošlé ulice poblíž") {
-                    viewModel.refreshSuggestions()
-                    showingSuggestions = true
+                HStack {
+                    Button("Navrhni neprošlé ulice poblíž") {
+                        viewModel.refreshSuggestions()
+                        showingSuggestions = true
+                    }
+                    .disabled(viewModel.lastLocation == nil)
+                    Spacer()
+                    Button("Procházky") { showingWalks = true }
+                    Button("Data") { showingData = true }
                 }
-                .disabled(viewModel.lastLocation == nil)
                 .font(.caption)
             }
             .padding()
@@ -70,6 +77,12 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingSuggestions) {
             SuggestionsView(suggestions: viewModel.suggestions)
+        }
+        .sheet(isPresented: $showingWalks) {
+            WalksView().environmentObject(viewModel)
+        }
+        .sheet(isPresented: $showingData) {
+            DataView().environmentObject(viewModel)
         }
     }
 

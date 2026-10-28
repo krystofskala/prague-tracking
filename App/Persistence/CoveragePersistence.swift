@@ -10,7 +10,7 @@ import Foundation
 /// SQLite (e.g. via GRDB) without touching any other layer — this type is
 /// the only thing that touches disk.
 final class CoveragePersistence {
-    private let fileURL: URL
+    let fileURL: URL
 
     init() {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

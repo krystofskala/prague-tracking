@@ -35,6 +35,11 @@ public final class CoverageStore {
         self.rewalkInterval = rewalkInterval
     }
 
+    /// After restoring a backup.
+    public func replacePassCounts(_ counts: [String: Int]) {
+        passCounts = counts
+    }
+
     public func recordPass(segmentID: String) {
         passCounts[segmentID, default: 0] += 1
     }

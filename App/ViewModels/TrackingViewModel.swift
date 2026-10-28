@@ -27,6 +27,13 @@ final class TrackingViewModel: ObservableObject {
     private var lastRoutePublish = Date.distantPast
     private static let routeSpacing: Double = 5
     private static let routePublishInterval: TimeInterval = 5
+    /// Every walk anywhere in the world, newest first.
+    @Published private(set) var walks: [Walk] = []
+    @Published private(set) var walkMeta: [String: WalkMeta] = [:]
+    /// Name of the Obsidian folder, nil until one is picked.
+    @Published private(set) var obsidianFolderName: String?
+    /// One line about the last export / backup / import, for the settings.
+    @Published private(set) var dataStatus: String?
     @Published var mode: PowerPolicy.Mode {
         didSet {
             powerPolicy.mode = mode
@@ -52,6 +59,11 @@ final class TrackingViewModel: ObservableObject {
     private var wasLowPower = false
     private let persistence: CoveragePersistence
     private let trackLog = TrackLog()
+    private let walkLibrary = WalkLibrary()
+    private let obsidian = ObsidianExport()
+    private var lastWalkSync = Date.distantPast
+    /// While walking, refresh walks and the Obsidian notes this often.
+    private static let walkSyncInterval: TimeInterval = 5 * 60
     /// Remembered so tracking continues by itself if iOS ended the app
     /// mid-walk and it gets opened again.
     private static let trackingKey = "trackingOn"
@@ -101,6 +113,7 @@ final class TrackingViewModel: ObservableObject {
         NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
             .sink { [weak self] _ in
                 self?.publishRoute(force: true)
+                self?.syncWalks()
             }
             .store(in: &cancellables)
 
@@ -122,7 +135,113 @@ final class TrackingViewModel: ObservableObject {
             publishCoverage()
             isLoadingStreets = false
             if demo { playDemoWalk() }
+            syncWalks()
         }
+        walkMeta = walkLibrary.loadMeta()
+        obsidianFolderName = obsidian.folder?.lastPathComponent
+    }
+
+    // MARK: Walks, Obsidian, backup, import (E2)
+
+    /// Re-reads the walks and writes changed notes to Obsidian, off the
+    /// main thread.
+    func syncWalks() {
+        lastWalkSync = Date()
+        let library = walkLibrary
+        let obsidian = obsidian
+        let meta = walkMeta
+        Task {
+            let (walks, written) = await Task.detached(priority: .utility) {
+                let walks = library.loadWalks()
+                return (walks, obsidian.export(walks, meta: meta))
+            }.value
+            self.walks = walks
+            if let written, written > 0 {
+                self.dataStatus = "Do Obsidianu zapsáno: \(written) procházek"
+                self.trackLog.appendEvent("obsidian", "zapsáno \(written)")
+            }
+        }
+    }
+
+    func chooseObsidianFolder(_ url: URL) {
+        if obsidian.remember(url) {
+            obsidianFolderName = url.lastPathComponent
+            dataStatus = "Složka nastavená, zapisuju procházky…"
+            syncWalks()
+        } else {
+            dataStatus = "Do složky se nedá zapisovat, zkus jinou."
+        }
+    }
+
+    func forgetObsidianFolder() {
+        obsidian.forget()
+        obsidianFolderName = nil
+    }
+
+    func updateMeta(_ meta: WalkMeta, for walkID: String) {
+        walkMeta[walkID] = meta
+        walkLibrary.saveMeta(walkMeta)
+        syncWalks()
+    }
+
+    func backup() {
+        let files = walkLibrary.csvFiles + [persistence.fileURL, walkLibrary.metaFile]
+        dataStatus = obsidian.backup(files: files)
+            ? "Záloha uložená do složky zaloha"
+            : "Zálohu se nepovedlo uložit, vyber složku Obsidianu znovu."
+        trackLog.appendEvent("zaloha", dataStatus ?? "")
+    }
+
+    /// From a `zaloha` folder the person picked. Pass counts are merged
+    /// (the higher count wins), so restoring never loses newer walks.
+    func restore(from folder: URL) {
+        let current = coverageStore.passCounts
+        let restored = ObsidianExport.restore(from: folder) { name in
+            switch name {
+            case "coverage.json": return persistence.fileURL
+            case "walk-meta.json": return walkLibrary.metaFile
+            default:
+                guard name.hasSuffix(".csv") else { return nil }
+                return walkLibrary.trasyDir.appendingPathComponent(name)
+            }
+        }
+        var merged = persistence.loadPassCounts()
+        merged.merge(current) { max($0, $1) }
+        coverageStore.replacePassCounts(merged)
+        persistence.savePassCounts(merged)
+        passCounts = merged
+        coverageSummary = CoverageSummary(graph: graph, passCounts: merged)
+        publishCoverage()
+        walkMeta = walkLibrary.loadMeta()
+        dataStatus = "Obnoveno souborů: \(restored)"
+        trackLog.appendEvent("obnova", dataStatus ?? "")
+        syncWalks()
+    }
+
+    /// A GPX from Strava, Garmin... joins the walks and counts its streets.
+    func importGPX(_ url: URL) {
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else {
+            dataStatus = "Soubor se nedá otevřít."
+            return
+        }
+        let fixes = walkLibrary.importGPX(data, name: url.lastPathComponent, fallback: Date())
+        var newPasses = 0
+        for fix in fixes {
+            guard let match = matcher?.match(fix.coordinate) else { continue }
+            let length = graph.segments[match.segmentID]?.lengthMeters ?? .infinity
+            if coverageStore.recordFix(on: match.segmentID, at: fix.time, segmentLengthMeters: length) {
+                coverageSummary.markWalked(match.segmentID)
+                newPasses += 1
+            }
+        }
+        passCounts = coverageStore.passCounts
+        publishCoverage()
+        persistence.savePassCounts(coverageStore.passCounts)
+        dataStatus = fixes.isEmpty ? "V souboru není žádná trasa." : "Importováno \(fixes.count) bodů, průchodů ulicí: \(newPasses)"
+        trackLog.appendEvent("import", "\(url.lastPathComponent): \(dataStatus ?? "")")
+        syncWalks()
     }
 
     private func playDemoWalk() {
@@ -174,6 +293,7 @@ final class TrackingViewModel: ObservableObject {
             isTracking = false
             UserDefaults.standard.set(false, forKey: Self.trackingKey)
             trackLog.appendEvent("sber", "zastaveno")
+            syncWalks()
         } else {
             startTracking()
         }
@@ -234,6 +354,10 @@ final class TrackingViewModel: ObservableObject {
         guard isAccurate else { return }
         lastLocation = coord
         addToRoute(coord, at: now)
+
+        if now.timeIntervalSince(lastWalkSync) >= Self.walkSyncInterval {
+            syncWalks()
+        }
 
         guard walking else { return }
         guard let match = matched else { return }

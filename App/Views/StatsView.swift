@@ -409,7 +409,7 @@ private struct HeatmapTab: View {
             .pickerStyle(.segmented)
             .padding(.horizontal)
             .padding(.bottom, 4)
-            Text(verbatim: "\(walks.count) procházek")
+            Text(verbatim: "Procházky: \(walks.count)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             WalkMapView(lines: walks.flatMap { walk in

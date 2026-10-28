@@ -195,7 +195,7 @@ final class TrackingViewModel: ObservableObject {
             }.value
             self.walks = walks
             if let written, written > 0 {
-                self.dataStatus = "Do Obsidianu zapsáno: \(written) procházek"
+                self.dataStatus = "Do Obsidianu zapsané procházky: \(written)"
                 self.trackLog.appendEvent("obsidian", "zapsáno \(written)")
             }
         }

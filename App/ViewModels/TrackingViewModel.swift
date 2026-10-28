@@ -66,6 +66,8 @@ final class TrackingViewModel: ObservableObject {
     private var lastMapPieces = Date.distantPast
     private static let mapPiecesInterval: TimeInterval = 30
     @Published private(set) var isRebuilding = false
+    /// A rebuild was asked for while one ran or the streets still loaded.
+    private var rebuildAgain = false
     /// nil until the bundled street data has loaded.
     private var matcher: MapMatcher?
     /// Whole-walk matching for recomputing history (E4); live fixes keep
@@ -166,7 +168,7 @@ final class TrackingViewModel: ObservableObject {
             publishCoverage()
             isLoadingStreets = false
             // First start with E4: work out the walked pieces from the log.
-            if savedPieces == nil, !demo { rebuildCoverage() }
+            if savedPieces == nil || rebuildAgain, !demo { rebuildCoverage() }
             if demo { playDemoWalk() }
             syncWalks()
         }
@@ -260,7 +262,11 @@ final class TrackingViewModel: ObservableObject {
     /// Recomputes pass counts from every logged fix, the walk edits, the
     /// streets marked by hand and the passes from before the log.
     func rebuildCoverage() {
-        guard let matcher, let hmm, !isRebuilding else { return }
+        guard let matcher, let hmm, !isRebuilding else {
+            rebuildAgain = true
+            return
+        }
+        rebuildAgain = false
         isRebuilding = true
         let library = walkLibrary, graph = graph, meta = walkMeta, manual = manualStreets
         let current = coverageStore.passCounts
@@ -299,6 +305,7 @@ final class TrackingViewModel: ObservableObject {
             isRebuilding = false
             trackLog.appendEvent("prepocet", "ulic s průchodem: \(counts.count)")
             refreshSuggestions()
+            if rebuildAgain { rebuildCoverage() }
         }
     }
 

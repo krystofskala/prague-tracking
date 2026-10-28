@@ -136,7 +136,15 @@ final class WalkLibrary: @unchecked Sendable {
         let stamp = ISO8601DateFormatter()
         stamp.formatOptions = [.withFullDate, .withTime]
         stamp.timeZone = .current
-        writeImport(fixes, name: "rucne-" + stamp.string(from: first.time))
+        let base = "rucne-" + stamp.string(from: first.time).replacingOccurrences(of: ":", with: "-")
+        var name = base
+        var n = 2
+        // A second walk drawn with the same start must not replace the first.
+        while FileManager.default.fileExists(atPath: importDir.appendingPathComponent(name + ".csv").path) {
+            name = "\(base)-\(n)"
+            n += 1
+        }
+        writeImport(fixes, name: name)
     }
 
     private func writeImport(_ fixes: [Fix], name: String) {

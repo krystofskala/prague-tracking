@@ -30,7 +30,7 @@ struct NewDrawnWalkView: View {
                     strokes.append(stroke)
                 }
                 Form {
-                    DatePicker("Začátek", selection: $start, in: ...Date())
+                    DatePicker("Začátek", selection: $start, in: ...Date().addingTimeInterval(-lengthKm * 1000 / DrawnWalk.speed))
                     Picker("Prst", selection: $drawing) {
                         Text("Kreslí").tag(true)
                         Text("Posouvá mapu").tag(false)
@@ -60,7 +60,7 @@ struct NewDrawnWalkView: View {
                         viewModel.addDrawnWalk(strokes: strokes, start: start)
                         dismiss()
                     }
-                    .disabled(strokes.isEmpty)
+                    .disabled(lengthKm == 0)
                 }
             }
         }

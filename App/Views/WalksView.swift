@@ -7,6 +7,7 @@ struct WalksView: View {
     @EnvironmentObject private var viewModel: TrackingViewModel
     @State private var tagFilter: String?
     @State private var grouping = Grouping.month
+    @State private var drawingWalk = false
 
     enum Grouping: String, CaseIterable {
         case month = "Podle měsíce"
@@ -36,6 +37,11 @@ struct WalksView: View {
                 }
             }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { drawingWalk = true } label: {
+                        Label("Nová procházka ručně", systemImage: "hand.draw")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Picker("Seskupit", selection: $grouping) {
@@ -50,6 +56,9 @@ struct WalksView: View {
                               ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                     }
                 }
+            }
+            .sheet(isPresented: $drawingWalk) {
+                NewDrawnWalkView().environmentObject(viewModel)
             }
             .navigationTitle(tagFilter.map { "#\($0)" } ?? "Procházky")
             .navigationDestination(for: String.self) { id in

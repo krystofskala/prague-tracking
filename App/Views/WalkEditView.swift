@@ -180,6 +180,8 @@ struct WalkMapView: UIViewRepresentable {
 
     let lines: [Line]
     var drawing = false
+    /// Where to look when there are no lines yet.
+    var center: Coordinate?
     var snap: (Coordinate) -> Coordinate? = { $0 }
     var onDraw: (([Coordinate]) -> Void)?
 
@@ -210,6 +212,11 @@ struct WalkMapView: UIViewRepresentable {
         // One finger draws; two fingers still move the map.
         map.panGestureRecognizers.forEach { $0.minimumNumberOfTouches = drawing ? 2 : 1 }
 
+        if !coordinator.fitted, lines.isEmpty, let center {
+            coordinator.fitted = true
+            map.setRegion(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: center.latitude, longitude: center.longitude),
+                                             latitudinalMeters: 1500, longitudinalMeters: 1500), animated: false)
+        }
         guard lines != coordinator.lines else { return }
         coordinator.lines = lines
         map.removeOverlays(map.overlays.filter { $0 is StyledPolyline && $0 !== coordinator.sketch })

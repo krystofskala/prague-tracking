@@ -125,13 +125,26 @@ final class WalkLibrary: @unchecked Sendable {
             }
         }
         guard !fixes.isEmpty else { return [] }
+        let safe = name.replacingOccurrences(of: "/", with: "-")
+        writeImport(fixes, name: (safe as NSString).deletingPathExtension)
+        return fixes
+    }
+
+    /// Writes a walk drawn by hand afterwards as its own CSV, like an import.
+    func saveDrawnWalk(_ fixes: [Fix]) {
+        guard let first = fixes.first else { return }
+        let stamp = ISO8601DateFormatter()
+        stamp.formatOptions = [.withFullDate, .withTime]
+        stamp.timeZone = .current
+        writeImport(fixes, name: "rucne-" + stamp.string(from: first.time))
+    }
+
+    private func writeImport(_ fixes: [Fix], name: String) {
         let formatter = ISO8601DateFormatter()
         formatter.timeZone = .current
         let body = fixes.map { TrackCSV.line($0, formatter: formatter) }.joined(separator: "\n")
-        let safe = name.replacingOccurrences(of: "/", with: "-")
-        let url = importDir.appendingPathComponent((safe as NSString).deletingPathExtension + ".csv")
+        let url = importDir.appendingPathComponent(name + ".csv")
         try? Data((TrackCSV.header + "\n" + body + "\n").utf8).write(to: url, options: .atomic)
-        return fixes
     }
 }
 

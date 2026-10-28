@@ -422,6 +422,19 @@ final class TrackingViewModel: ObservableObject {
         syncWalks()
     }
 
+    /// A walk drawn by hand afterwards (no GPS that day): saved like an
+    /// import, then everything is recounted from the log.
+    func addDrawnWalk(strokes: [[Coordinate]], start: Date) {
+        let fixes = DrawnWalk.fixes(strokes: strokes, start: start)
+        guard !fixes.isEmpty else { return }
+        walkLibrary.saveDrawnWalk(fixes)
+        let km = DrawnWalk.length(of: strokes) / 1000
+        dataStatus = String(format: "Nakreslená procházka: %.2f km", km)
+        trackLog.appendEvent("rucne-trasa", dataStatus ?? "")
+        rebuildCoverage()
+        syncWalks()
+    }
+
     private func playDemoWalk() {
         let route = DemoWalk.route(in: graph)
         let start = Date().addingTimeInterval(-3 * Double(route.count))

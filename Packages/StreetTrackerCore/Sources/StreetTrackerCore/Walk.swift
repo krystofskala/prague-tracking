@@ -107,14 +107,25 @@ public struct Walk: Sendable, Equatable {
     /// `RRRR-MM-DD-HHMM` of the start in local time; the note's file name.
     public let id: String
     public let segments: [[Fix]]
+    /// Pieces drawn by hand (`WalkEdit.drawn`); no times, so no fixes.
+    public let drawn: [[Coordinate]]
+
+    public init(id: String, segments: [[Fix]], drawn: [[Coordinate]] = []) {
+        self.id = id
+        self.segments = segments
+        self.drawn = drawn
+    }
 
     public var start: Date { segments.first!.first!.time }
     public var end: Date { segments.last!.last!.time }
     public var fixes: [Fix] { segments.flatMap { $0 } }
 
     public var distanceMeters: Double {
-        segments.reduce(0) { total, segment in
+        let recorded = segments.reduce(0) { total, segment in
             total + zip(segment, segment.dropFirst()).reduce(0) { $0 + Geo.distance($1.0.coordinate, $1.1.coordinate) }
+        }
+        return drawn.reduce(recorded) { total, piece in
+            total + zip(piece, piece.dropFirst()).reduce(0) { $0 + Geo.distance($1.0, $1.1) }
         }
     }
 

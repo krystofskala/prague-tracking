@@ -6,11 +6,14 @@ public struct WalkMeta: Codable, Sendable, Equatable {
     public var tags: [String]
     /// Hex like `#2fdacc`.
     public var color: String?
+    /// Trims, removed pieces, hand-drawn pieces; nil = as recorded.
+    public var edit: WalkEdit?
 
-    public init(title: String? = nil, tags: [String] = [], color: String? = nil) {
+    public init(title: String? = nil, tags: [String] = [], color: String? = nil, edit: WalkEdit? = nil) {
         self.title = title
         self.tags = tags
         self.color = color
+        self.edit = edit
     }
 }
 

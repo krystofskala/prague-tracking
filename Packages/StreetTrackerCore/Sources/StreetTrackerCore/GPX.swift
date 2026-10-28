@@ -25,6 +25,14 @@ public enum GPX {
             }
             out += "    </trkseg>\n"
         }
+        // Drawn by hand: no times, so readers know they weren't recorded.
+        for piece in walk.drawn {
+            out += "    <trkseg>\n"
+            for point in piece {
+                out += String(format: "      <trkpt lat=\"%.6f\" lon=\"%.6f\"/>\n", point.latitude, point.longitude)
+            }
+            out += "    </trkseg>\n"
+        }
         out += "  </trk>\n</gpx>\n"
         return out
     }

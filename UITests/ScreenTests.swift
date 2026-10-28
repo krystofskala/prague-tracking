@@ -42,7 +42,10 @@ final class ScreenTests: XCTestCase {
         XCTAssertTrue(firstWalk.waitForExistence(timeout: 20), "the demo walk is listed")
         screenshot("5-seznam-prochazek")
         firstWalk.tap()
-        XCTAssertTrue(app.textFields["nazev"].waitForExistence(timeout: 10), "walk detail opens")
+        if !app.textFields["nazev"].waitForExistence(timeout: 10) {
+            screenshot("5b-po-tuknuti")
+            XCTFail("walk detail opens; cell: \(firstWalk.debugDescription.prefix(300)); screen: \(app.debugDescription.prefix(3000))")
+        }
         _ = XCTWaiter.wait(for: [XCTestExpectation(description: "tiles")], timeout: 4)
         screenshot("6-detail-prochazky")
 

@@ -42,21 +42,33 @@ final class LocationTracker: NSObject, ObservableObject {
         backgroundSession = CLBackgroundActivitySession()
         manager.startMonitoringSignificantLocationChanges()
         updatesTask = Task { [weak self] in
-            do {
-                for try await update in CLLocationUpdate.liveUpdates(.fitness) {
-                    guard let self, !Task.isCancelled else { return }
-                    if update.isStationary != self.wasStationary {
-                        self.wasStationary = update.isStationary
-                        // iOS pauses GPS by itself while you stand still.
-                        self.onEvent?("gps", update.isStationary ? "stojí, iOS pozastavil GPS" : "pohyb, GPS běží")
+            // The stream can end or throw (e.g. a location error); a silent
+            // end looked like tracking while nothing was recorded, so start
+            // it again after a short pause for as long as tracking is on.
+            while !Task.isCancelled {
+                do {
+                    for try await update in CLLocationUpdate.liveUpdates(.fitness) {
+                        guard let self, !Task.isCancelled else { return }
+                        self.receive(update)
                     }
-                    if let location = update.location {
-                        self.onLocation?(location)
-                    }
+                    self?.onEvent?("chyba", "liveUpdates skončily, spouštím znovu")
+                } catch {
+                    self?.onEvent?("chyba", "liveUpdates: \(error.localizedDescription), spouštím znovu")
                 }
-            } catch {
-                self?.onEvent?("chyba", "liveUpdates: \(error.localizedDescription)")
+                guard self?.isTracking == true else { return }
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
             }
+        }
+    }
+
+    private func receive(_ update: CLLocationUpdate) {
+        if update.isStationary != wasStationary {
+            wasStationary = update.isStationary
+            // iOS pauses GPS by itself while you stand still.
+            onEvent?("gps", update.isStationary ? "stojí, iOS pozastavil GPS" : "pohyb, GPS běží")
+        }
+        if let location = update.location {
+            onLocation?(location)
         }
     }
 

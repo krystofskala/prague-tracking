@@ -25,7 +25,7 @@ public enum DrawnWalk {
                 if let previous {
                     let walk = Geo.distance(previous, point) / speed
                     // Same point twice would give two fixes at one time.
-                    if i > 0, walk < 0.1 { continue }
+                    if walk < 0.1 { continue }
                     time = time.addingTimeInterval(i == 0 ? min(walk, maxStrokeGap) : walk)
                 }
                 fixes.append(Fix(time: time, coordinate: point, accuracy: 5, speed: speed, walking: true))

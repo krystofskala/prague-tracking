@@ -39,7 +39,8 @@ final class DrawnWalkTests: XCTestCase {
     }
 
     func testRepeatedPointGivesNoDuplicateTime() {
-        let fixes = DrawnWalk.fixes(strokes: [[a, a, b]], start: start)
+        let c = Coordinate(latitude: 50.003, longitude: 14.401)
+        let fixes = DrawnWalk.fixes(strokes: [[a, a, b], [b, c]], start: start)
         XCTAssertEqual(Set(fixes.map(\.time)).count, fixes.count)
     }
 

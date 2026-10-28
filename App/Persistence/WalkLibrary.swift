@@ -10,6 +10,7 @@ final class WalkLibrary: @unchecked Sendable {
     let manualFile: URL
     let legacyFile: URL
     let goalsFile: URL
+    let piecesFile: URL
 
     init() {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -21,6 +22,7 @@ final class WalkLibrary: @unchecked Sendable {
         manualFile = support.appendingPathComponent("rucne-prosle-ulice.json")
         legacyFile = support.appendingPathComponent("pokryti-pred-csv.json")
         goalsFile = support.appendingPathComponent("vyzvy.json")
+        piecesFile = support.appendingPathComponent("kusy-ulic.json")
     }
 
     /// Fix CSVs: `RRRR-MM-DD.csv` and everything in `import/`.
@@ -74,6 +76,17 @@ final class WalkLibrary: @unchecked Sendable {
     func saveLegacy(_ counts: [String: Int]) {
         guard let data = try? JSONEncoder().encode(counts) else { return }
         try? data.write(to: legacyFile, options: .atomic)
+    }
+
+    /// Walked pieces of streets (E4); nil before the first recompute.
+    func loadPieces() -> PieceCoverage? {
+        guard let data = try? Data(contentsOf: piecesFile) else { return nil }
+        return try? JSONDecoder().decode(PieceCoverage.self, from: data)
+    }
+
+    func savePieces(_ pieces: PieceCoverage) {
+        guard let data = try? JSONEncoder().encode(pieces) else { return }
+        try? data.write(to: piecesFile, options: .atomic)
     }
 
     func loadGoals() -> Goals {

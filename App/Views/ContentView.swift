@@ -13,7 +13,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            MapView(graph: viewModel.graph, passCounts: viewModel.passCounts, route: viewModel.todaysRoute,
+            MapView(graph: viewModel.graph, passCounts: viewModel.passCounts, pieces: viewModel.mapPieces, route: viewModel.todaysRoute,
                     centerOnRoute: viewModel.isDemo,
                     onLongPress: { pressedStreet = viewModel.street(near: $0) })
                 .ignoresSafeArea()

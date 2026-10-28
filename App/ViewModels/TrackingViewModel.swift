@@ -57,6 +57,15 @@ final class TrackingViewModel: ObservableObject {
 
     private let coverageStore: CoverageStore
     private var coverageSummary = CoverageSummary(graph: StreetGraph(segments: [:]), passCounts: [:])
+    /// E4: which parts of streets were walked.
+    private var pieces = PieceCoverage()
+    private var pieceTracker = PieceTracker()
+    /// `pieces` as the map last got them; refreshed on a new pass or every
+    /// `mapPiecesInterval`, so the map isn't rebuilt on every fix.
+    @Published private(set) var mapPieces = PieceCoverage()
+    private var lastMapPieces = Date.distantPast
+    private static let mapPiecesInterval: TimeInterval = 30
+    @Published private(set) var isRebuilding = false
     /// nil until the bundled street data has loaded.
     private var matcher: MapMatcher?
     private let locationTracker: LocationTracker
@@ -144,9 +153,15 @@ final class TrackingViewModel: ObservableObject {
             }.value
             self.graph = graph
             self.matcher = matcher
-            self.coverageSummary = CoverageSummary(graph: graph, passCounts: coverageStore.passCounts)
+            let savedPieces = walkLibrary.loadPieces()
+            self.pieces = savedPieces ?? PieceCoverage()
+            self.mapPieces = self.pieces
+            self.coverageSummary = CoverageSummary(graph: graph, walkedMeters: CoverageRebuild.walkedMeters(
+                passCounts: coverageStore.passCounts, pieces: pieces, graph: graph))
             publishCoverage()
             isLoadingStreets = false
+            // First start with E4: work out the walked pieces from the log.
+            if savedPieces == nil, !demo { rebuildCoverage() }
             if demo { playDemoWalk() }
             syncWalks()
         }
@@ -236,11 +251,12 @@ final class TrackingViewModel: ObservableObject {
     /// Recomputes pass counts from every logged fix, the walk edits, the
     /// streets marked by hand and the passes from before the log.
     func rebuildCoverage() {
-        guard let matcher else { return }
+        guard let matcher, !isRebuilding else { return }
+        isRebuilding = true
         let library = walkLibrary, graph = graph, meta = walkMeta, manual = manualStreets
         let current = coverageStore.passCounts
         Task {
-            let counts = await Task.detached(priority: .userInitiated) { () -> [String: Int] in
+            let (counts, pieces) = await Task.detached(priority: .userInitiated) { () -> ([String: Int], PieceCoverage) in
                 let fixes = library.loadFixes()
                 let legacy = library.loadLegacy() ?? {
                     let fromLog = CoverageRebuild.passCounts(fixes: fixes, graph: graph, matcher: matcher)
@@ -250,7 +266,7 @@ final class TrackingViewModel: ObservableObject {
                 }()
                 let walks = WalkSplitter.walks(from: fixes)
                 let edits = walks.compactMap { walk in meta[walk.id]?.edit.map { (walk, $0) } }
-                return CoverageRebuild.passCounts(
+                return CoverageRebuild.rebuild(
                     fixes: fixes,
                     excluded: edits.flatMap { $0.1.excludedRanges(of: $0.0) },
                     drawn: edits.flatMap { $0.1.drawn },
@@ -262,9 +278,14 @@ final class TrackingViewModel: ObservableObject {
             }.value
             coverageStore.replacePassCounts(counts)
             passCounts = counts
-            coverageSummary = CoverageSummary(graph: graph, passCounts: counts)
+            self.pieces = pieces
+            mapPieces = pieces
+            coverageSummary = CoverageSummary(graph: graph, walkedMeters: CoverageRebuild.walkedMeters(
+                passCounts: counts, pieces: pieces, graph: graph))
             publishCoverage()
             persistence.savePassCounts(counts)
+            walkLibrary.savePieces(pieces)
+            isRebuilding = false
             trackLog.appendEvent("prepocet", "ulic s průchodem: \(counts.count)")
             refreshSuggestions()
         }
@@ -278,7 +299,7 @@ final class TrackingViewModel: ObservableObject {
     /// segments into streets. Replays every fix, so off the main thread.
     func refreshStats() {
         guard let matcher else { return }
-        let library = walkLibrary, graph = graph, meta = walkMeta, counts = passCounts
+        let library = walkLibrary, graph = graph, meta = walkMeta, counts = passCounts, pieces = pieces
         Task {
             let (log, streets, edited) = await Task.detached(priority: .userInitiated) {
                 let fixes = library.loadFixes()
@@ -294,7 +315,8 @@ final class TrackingViewModel: ObservableObject {
                 ).filter { legacy[$0.key] == nil }
                 let edited = walks.compactMap { $0.applying(meta[$0.id]?.edit) }
                 return (ActivityLog(walks: edited, firstPasses: first, passCounts: counts, graph: graph),
-                        StreetProgress.streets(graph: graph, passCounts: counts),
+                        StreetProgress.streets(graph: graph, walkedMeters: CoverageRebuild.walkedMeters(
+                            passCounts: counts, pieces: pieces, graph: graph)),
                         edited)
             }.value
             activity = log
@@ -310,7 +332,8 @@ final class TrackingViewModel: ObservableObject {
 
     func backup() {
         let files = walkLibrary.csvFiles + [persistence.fileURL, walkLibrary.metaFile,
-                                            walkLibrary.manualFile, walkLibrary.legacyFile, walkLibrary.goalsFile]
+                                            walkLibrary.manualFile, walkLibrary.legacyFile, walkLibrary.goalsFile,
+                                            walkLibrary.piecesFile]
         dataStatus = obsidian.backup(files: files)
             ? "Záloha uložená do složky zaloha"
             : "Zálohu se nepovedlo uložit, vyber složku Obsidianu znovu."
@@ -328,6 +351,7 @@ final class TrackingViewModel: ObservableObject {
             case "rucne-prosle-ulice.json": return walkLibrary.manualFile
             case "pokryti-pred-csv.json": return walkLibrary.legacyFile
             case "vyzvy.json": return walkLibrary.goalsFile
+            case "kusy-ulic.json": return walkLibrary.piecesFile
             default:
                 guard name.hasSuffix(".csv") else { return nil }
                 return walkLibrary.trasyDir.appendingPathComponent(name)
@@ -338,7 +362,13 @@ final class TrackingViewModel: ObservableObject {
         coverageStore.replacePassCounts(merged)
         persistence.savePassCounts(merged)
         passCounts = merged
-        coverageSummary = CoverageSummary(graph: graph, passCounts: merged)
+        var restoredPieces = walkLibrary.loadPieces() ?? PieceCoverage()
+        restoredPieces.merge(pieces)
+        pieces = restoredPieces
+        mapPieces = pieces
+        walkLibrary.savePieces(pieces)
+        coverageSummary = CoverageSummary(graph: graph, walkedMeters: CoverageRebuild.walkedMeters(
+            passCounts: merged, pieces: pieces, graph: graph))
         publishCoverage()
         walkMeta = walkLibrary.loadMeta()
         manualStreets = walkLibrary.loadManualStreets()
@@ -358,14 +388,20 @@ final class TrackingViewModel: ObservableObject {
         }
         let fixes = walkLibrary.importGPX(data, name: url.lastPathComponent, fallback: Date())
         var newPasses = 0
+        var tracker = PieceTracker()
+        var touched: Set<String> = []
         for fix in fixes {
             guard let match = matcher?.match(fix.coordinate) else { continue }
+            _ = tracker.record(match, at: fix.time, graph: graph, into: &pieces)
+            touched.insert(match.segmentID)
             let length = graph.segments[match.segmentID]?.lengthMeters ?? .infinity
             if coverageStore.recordFix(on: match.segmentID, at: fix.time, segmentLengthMeters: length) {
-                coverageSummary.markWalked(match.segmentID)
                 newPasses += 1
             }
         }
+        touched.forEach(updateWalked)
+        walkLibrary.savePieces(pieces)
+        mapPieces = pieces
         passCounts = coverageStore.passCounts
         publishCoverage()
         persistence.savePassCounts(coverageStore.passCounts)
@@ -491,12 +527,26 @@ final class TrackingViewModel: ObservableObject {
 
         guard walking else { return }
         guard let match = matched else { return }
-        // Fixes come every few metres; only a new pass changes counts, map and file.
         let length = graph.segments[match.segmentID]?.lengthMeters ?? .infinity
-        guard coverageStore.recordFix(on: match.segmentID, at: location.timestamp, segmentLengthMeters: length) else { return }
+        let newPiece = pieceTracker.record(match, at: location.timestamp, graph: graph, into: &pieces)
+        let newPass = coverageStore.recordFix(on: match.segmentID, at: location.timestamp, segmentLengthMeters: length)
+        if newPiece {
+            updateWalked(match.segmentID)
+            if newPass || now.timeIntervalSince(lastMapPieces) >= Self.mapPiecesInterval {
+                lastMapPieces = now
+                mapPieces = pieces
+                walkLibrary.savePieces(pieces)
+            }
+        }
+        // Fixes come every few metres; only a new pass changes counts and the file.
+        guard newPass else {
+            if newPiece { publishCoverage() }
+            return
+        }
 
         passCounts = coverageStore.passCounts
-        coverageSummary.markWalked(match.segmentID)
+        updateWalked(match.segmentID)
+        mapPieces = pieces
         publishCoverage()
         persistence.savePassCounts(coverageStore.passCounts)
     }
@@ -562,6 +612,14 @@ final class TrackingViewModel: ObservableObject {
             trackLog.appendEvent("uspora", lowPower ? "zapnuta (řidší body)" : "vypnuta (všechny body)")
         }
         return lowPower
+    }
+
+    /// One segment's walked metres into the coverage numbers.
+    private func updateWalked(_ segmentID: String) {
+        let n = coverageStore.passCount(for: segmentID)
+        guard n > 0 else { return }
+        let meters = CoverageRebuild.walkedMeters(passCounts: [segmentID: n], pieces: pieces, graph: graph)[segmentID] ?? 0
+        coverageSummary.setWalked(segmentID, meters: meters)
     }
 
     private func publishCoverage() {

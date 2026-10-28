@@ -17,6 +17,9 @@ final class RoutePolyline: MKMultiPolyline {}
 struct MapView: UIViewRepresentable {
     let graph: StreetGraph
     let passCounts: [String: Int]
+    /// Walked parts of streets (E4); a partly walked street is drawn grey
+    /// with only the walked parts blue.
+    var pieces = PieceCoverage()
     let route: [[Coordinate]]
     /// Zoom to the route once it appears (demo/screenshots).
     var centerOnRoute = false
@@ -39,7 +42,8 @@ struct MapView: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.onLongPress = onLongPress
         updateRoute(mapView, coordinator: coordinator)
-        guard graph.segments.count != coordinator.segmentCount || passCounts != coordinator.passCounts else {
+        guard graph.segments.count != coordinator.segmentCount || passCounts != coordinator.passCounts
+                || pieces != coordinator.pieces else {
             return
         }
         if graph.segments.count != coordinator.segmentCount {
@@ -53,11 +57,20 @@ struct MapView: UIViewRepresentable {
             coordinator.segmentCount = graph.segments.count
         }
         coordinator.passCounts = passCounts
+        coordinator.pieces = pieces
 
         var buckets: [Int: [MKPolyline]] = [:]
         for (id, polyline) in coordinator.polylines {
             let bucket = min(passCounts[id] ?? 0, Self.maxPassBucket)
-            buckets[bucket, default: []].append(polyline)
+            if bucket > 0, let segment = graph.segments[id], let runs = pieces.walkedLines(of: segment), !runs.isEmpty {
+                buckets[0, default: []].append(polyline)
+                for run in runs where run.count >= 2 {
+                    let coords = run.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+                    buckets[bucket, default: []].append(MKPolyline(coordinates: coords, count: coords.count))
+                }
+            } else {
+                buckets[bucket, default: []].append(polyline)
+            }
         }
         mapView.removeOverlays(mapView.overlays.filter { $0 is StreetMultiPolyline })
         // Unwalked first so walked streets draw on top of them, all above
@@ -111,6 +124,7 @@ struct MapView: UIViewRepresentable {
         var polylines: [String: MKPolyline] = [:]
         var segmentCount = -1
         var passCounts: [String: Int] = [:]
+        var pieces = PieceCoverage()
         var routeOverlay: RoutePolyline?
         var routeCount = -1
         var centeredOnRoute = false

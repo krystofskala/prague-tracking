@@ -47,6 +47,15 @@ struct DataView: View {
                     Text("Trasy ze Stravy, Garminu nebo jiné appky. Pražské ulice se započítají.")
                 }
 
+                Section {
+                    Button(viewModel.isRebuilding ? "Přepočítávám…" : "Přepočítat historii") { viewModel.rebuildCoverage() }
+                        .disabled(viewModel.isRebuilding || viewModel.isLoadingStreets)
+                } header: {
+                    Text("Pokrytí")
+                } footer: {
+                    Text("Projde znovu všechny uložené body (od 26. 10.) podle nejnovějších pravidel. Úpravy procházek a ručně označené ulice zůstanou.")
+                }
+
                 if let status = viewModel.dataStatus {
                     Section { Text(status).font(.footnote) }
                 }

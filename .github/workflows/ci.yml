@@ -67,8 +67,14 @@ jobs:
           import json, os
           for test in json.load(open("screenshots/manifest.json")):
               for a in test["attachments"]:
-                  name = a["suggestedHumanReadableName"].split("_")[0] + ".png"
-                  os.rename("screenshots/" + a["exportedFileName"], "screenshots/" + name)
+                  name = a["suggestedHumanReadableName"].split("_")[0]
+                  path = "screenshots/" + a["exportedFileName"]
+                  # Only our named screenshots; failure snapshots and debug
+                  # texts have names the artifact upload rejects.
+                  if path.endswith(".png") and name[:1].isdigit():
+                      os.rename(path, "screenshots/" + name + ".png")
+                  else:
+                      os.remove(path)
           PY
           ls -la screenshots
       - uses: actions/upload-artifact@v4

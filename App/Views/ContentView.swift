@@ -24,6 +24,8 @@ struct ContentView: View {
                     Text(verbatim: "Prošlo \((viewModel.coverageFraction * 100).formatted(.number.precision(.fractionLength(viewModel.coverageFraction < 0.01 ? 2 : 1)))) % ulic Prahy")
                         .font(.headline)
                         .accessibilityIdentifier("pokryti")
+                        // UI tests: why coverage stays at zero.
+                        .accessibilityValue(viewModel.isDemo ? viewModel.demoStatus : "")
                     Spacer()
                     Button(viewModel.isTracking ? "Zastavit" : "Začít") {
                         viewModel.toggleTracking()

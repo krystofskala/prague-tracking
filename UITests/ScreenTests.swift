@@ -42,7 +42,7 @@ final class ScreenTests: XCTestCase {
         XCTAssertTrue(firstWalk.waitForExistence(timeout: 20), "the demo walk is listed")
         screenshot("5-seznam-prochazek")
         firstWalk.tap()
-        XCTAssertTrue(app.staticTexts["Délka"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["nazev"].waitForExistence(timeout: 10), "walk detail opens")
         _ = XCTWaiter.wait(for: [XCTestExpectation(description: "tiles")], timeout: 4)
         screenshot("6-detail-prochazky")
 

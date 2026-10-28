@@ -31,11 +31,17 @@ public final class MapMatcher: @unchecked Sendable {
     }
 
     public func match(_ location: Coordinate) -> MatchResult? {
+        candidates(location, limit: 1).first
+    }
+
+    /// Every street within `maxMatchDistanceMeters`, nearest first, each
+    /// at its nearest point (for the HMM matcher).
+    public func candidates(_ location: Coordinate, limit: Int = 8) -> [MatchResult] {
         let candidateIDs = index.candidateSegmentIDs(near: location)
-        guard !candidateIDs.isEmpty else { return nil }
+        guard !candidateIDs.isEmpty else { return [] }
 
         let localPoint = Geo.toLocalMeters(location, origin: location) // always (0, 0)
-        var best: MatchResult?
+        var results: [MatchResult] = []
 
         for id in candidateIDs {
             guard let segment = graph.segments[id] else { continue }
@@ -53,13 +59,13 @@ public final class MapMatcher: @unchecked Sendable {
                 }
                 walked += ((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y)).squareRoot()
             }
-            if minDist < (best?.distanceMeters ?? .greatestFiniteMagnitude) {
-                best = MatchResult(segmentID: id, distanceMeters: minDist, alongMeters: along)
+            if minDist <= maxMatchDistanceMeters {
+                results.append(MatchResult(segmentID: id, distanceMeters: minDist, alongMeters: along))
             }
         }
-
-        guard let match = best, match.distanceMeters <= maxMatchDistanceMeters else { return nil }
-        return match
+        // Ties by ID so the result doesn't depend on set order.
+        results.sort { ($0.distanceMeters, $0.segmentID) < ($1.distanceMeters, $1.segmentID) }
+        return Array(results.prefix(limit))
     }
 
     /// The nearest point on the nearest street, for drawing a missed piece

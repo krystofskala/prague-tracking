@@ -18,10 +18,11 @@ public enum CoverageRebuild {
         legacy: [String: Int] = [:],
         graph: StreetGraph,
         matcher: MapMatcher,
+        hmm: HMMMatcher? = nil,
         maxAccuracy: Double = WalkSplitter.maxAccuracy
     ) -> [String: Int] {
         rebuild(fixes: fixes, excluded: excluded, drawn: drawn, manualSegments: manualSegments, legacy: legacy,
-                graph: graph, matcher: matcher, maxAccuracy: maxAccuracy).passCounts
+                graph: graph, matcher: matcher, hmm: hmm, maxAccuracy: maxAccuracy).passCounts
     }
 
     /// Pass counts and walked pieces (E4) in one replay.
@@ -33,12 +34,13 @@ public enum CoverageRebuild {
         legacy: [String: Int] = [:],
         graph: StreetGraph,
         matcher: MapMatcher,
+        hmm: HMMMatcher? = nil,
         maxAccuracy: Double = WalkSplitter.maxAccuracy
     ) -> (passCounts: [String: Int], pieces: PieceCoverage) {
         let store = CoverageStore()
         var pieces = PieceCoverage()
         var tracker = PieceTracker()
-        replay(fixes: fixes, excluded: excluded, graph: graph, matcher: matcher, maxAccuracy: maxAccuracy, into: store,
+        replay(fixes: fixes, excluded: excluded, graph: graph, matcher: matcher, hmm: hmm, maxAccuracy: maxAccuracy, into: store,
                onMatch: { match, time in _ = tracker.record(match, at: time, graph: graph, into: &pieces) })
         var counts = store.passCounts
 
@@ -92,26 +94,30 @@ public enum CoverageRebuild {
         excluded: [TimeRange] = [],
         graph: StreetGraph,
         matcher: MapMatcher,
+        hmm: HMMMatcher? = nil,
         maxAccuracy: Double = WalkSplitter.maxAccuracy
     ) -> [String: Date] {
         var first: [String: Date] = [:]
-        replay(fixes: fixes, excluded: excluded, graph: graph, matcher: matcher, maxAccuracy: maxAccuracy,
+        replay(fixes: fixes, excluded: excluded, graph: graph, matcher: matcher, hmm: hmm, maxAccuracy: maxAccuracy,
                into: CoverageStore(), onPass: { id, time in
             if first[id] == nil { first[id] = time }
         })
         return first
     }
 
+    /// With `hmm`, each fix's street comes from the whole walk (E4);
+    /// without it, the nearest street, as live tracking does.
     private static func replay(fixes: [Fix], excluded: [TimeRange], graph: StreetGraph, matcher: MapMatcher,
-                               maxAccuracy: Double, into store: CoverageStore,
+                               hmm: HMMMatcher? = nil, maxAccuracy: Double, into store: CoverageStore,
                                onMatch: (MatchResult, Date) -> Void = { _, _ in },
                                onPass: (String, Date) -> Void = { _, _ in }) {
         let usable = fixes
             .filter { $0.walking && $0.accuracy >= 0 && $0.accuracy < maxAccuracy }
             .filter { fix in !excluded.contains { $0.contains(fix.time) } }
             .sorted { $0.time < $1.time }
-        for fix in usable {
-            guard let match = matcher.match(fix.coordinate) else { continue }
+        let matches = hmm?.match(usable) ?? usable.map { matcher.match($0.coordinate) }
+        for (fix, match) in zip(usable, matches) {
+            guard let match else { continue }
             onMatch(match, fix.time)
             let length = graph.segments[match.segmentID]?.lengthMeters ?? .infinity
             if store.recordFix(on: match.segmentID, at: fix.time, segmentLengthMeters: length) {

@@ -68,6 +68,9 @@ final class TrackingViewModel: ObservableObject {
     @Published private(set) var isRebuilding = false
     /// nil until the bundled street data has loaded.
     private var matcher: MapMatcher?
+    /// Whole-walk matching for recomputing history (E4); live fixes keep
+    /// the nearest street.
+    private var hmm: HMMMatcher?
     private let locationTracker: LocationTracker
     private let motionMonitor = WalkingActivityMonitor()
     private var powerPolicy = PowerPolicy()
@@ -147,12 +150,14 @@ final class TrackingViewModel: ObservableObject {
         // the spatial index takes a second or two; doing it here on the main
         // thread froze the app at launch.
         Task {
-            let (graph, matcher) = await Task.detached(priority: .userInitiated) {
+            let (graph, matcher, hmm) = await Task.detached(priority: .userInitiated) {
                 let graph = Self.loadBundledGraph()
-                return (graph, MapMatcher(graph: graph))
+                let matcher = MapMatcher(graph: graph)
+                return (graph, matcher, HMMMatcher(graph: graph, matcher: matcher))
             }.value
             self.graph = graph
             self.matcher = matcher
+            self.hmm = hmm
             let savedPieces = walkLibrary.loadPieces()
             self.pieces = savedPieces ?? PieceCoverage()
             self.mapPieces = self.pieces
@@ -232,6 +237,10 @@ final class TrackingViewModel: ObservableObject {
     /// For snapping a finger-drawn piece to streets (nil while loading).
     var streetMatcher: MapMatcher? { matcher }
 
+    var demoStatus: String {
+        "body \(loggedPoints), ulice \(graph.segments.count), průchody \(passCounts.count), kusy \(pieces.walked.count), \(String(format: "%.5f", coverageFraction))"
+    }
+
     func street(near coordinate: Coordinate) -> StreetSegment? {
         matcher?.match(coordinate).flatMap { graph.segments[$0.segmentID] }
     }
@@ -251,7 +260,7 @@ final class TrackingViewModel: ObservableObject {
     /// Recomputes pass counts from every logged fix, the walk edits, the
     /// streets marked by hand and the passes from before the log.
     func rebuildCoverage() {
-        guard let matcher, !isRebuilding else { return }
+        guard let matcher, let hmm, !isRebuilding else { return }
         isRebuilding = true
         let library = walkLibrary, graph = graph, meta = walkMeta, manual = manualStreets
         let current = coverageStore.passCounts
@@ -259,6 +268,7 @@ final class TrackingViewModel: ObservableObject {
             let (counts, pieces) = await Task.detached(priority: .userInitiated) { () -> ([String: Int], PieceCoverage) in
                 let fixes = library.loadFixes()
                 let legacy = library.loadLegacy() ?? {
+                    // Live counts came from the nearest street; compare like with like.
                     let fromLog = CoverageRebuild.passCounts(fixes: fixes, graph: graph, matcher: matcher)
                     let legacy = CoverageRebuild.legacyCounts(current: current, fromLog: fromLog)
                     library.saveLegacy(legacy)
@@ -273,7 +283,8 @@ final class TrackingViewModel: ObservableObject {
                     manualSegments: manual,
                     legacy: legacy,
                     graph: graph,
-                    matcher: matcher
+                    matcher: matcher,
+                    hmm: hmm
                 )
             }.value
             coverageStore.replacePassCounts(counts)
@@ -298,7 +309,7 @@ final class TrackingViewModel: ObservableObject {
     /// Dates the first pass of every segment from the log and groups
     /// segments into streets. Replays every fix, so off the main thread.
     func refreshStats() {
-        guard let matcher else { return }
+        guard let matcher, let hmm else { return }
         let library = walkLibrary, graph = graph, meta = walkMeta, counts = passCounts, pieces = pieces
         Task {
             let (log, streets, edited) = await Task.detached(priority: .userInitiated) {
@@ -311,7 +322,8 @@ final class TrackingViewModel: ObservableObject {
                     fixes: fixes,
                     excluded: edits.flatMap { $0.1.excludedRanges(of: $0.0) },
                     graph: graph,
-                    matcher: matcher
+                    matcher: matcher,
+                    hmm: hmm
                 ).filter { legacy[$0.key] == nil }
                 let edited = walks.compactMap { $0.applying(meta[$0.id]?.edit) }
                 return (ActivityLog(walks: edited, firstPasses: first, passCounts: counts, graph: graph),

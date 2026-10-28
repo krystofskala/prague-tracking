@@ -21,15 +21,7 @@ public enum CoverageRebuild {
         maxAccuracy: Double = WalkSplitter.maxAccuracy
     ) -> [String: Int] {
         let store = CoverageStore()
-        let usable = fixes
-            .filter { $0.walking && $0.accuracy >= 0 && $0.accuracy < maxAccuracy }
-            .filter { fix in !excluded.contains { $0.contains(fix.time) } }
-            .sorted { $0.time < $1.time }
-        for fix in usable {
-            guard let match = matcher.match(fix.coordinate) else { continue }
-            let length = graph.segments[match.segmentID]?.lengthMeters ?? .infinity
-            store.recordFix(on: match.segmentID, at: fix.time, segmentLengthMeters: length)
-        }
+        replay(fixes: fixes, excluded: excluded, graph: graph, matcher: matcher, maxAccuracy: maxAccuracy, into: store)
         var counts = store.passCounts
 
         // A drawn piece walks each street it follows once.
@@ -51,6 +43,40 @@ public enum CoverageRebuild {
             counts[id, default: 0] += n
         }
         return counts
+    }
+
+    /// When each segment was walked for the first time, from the log alone
+    /// (hand-drawn, hand-marked and pre-log passes have no date). Drives
+    /// "only new kilometres" in challenges and the monthly goal.
+    public static func firstPasses(
+        fixes: [Fix],
+        excluded: [TimeRange] = [],
+        graph: StreetGraph,
+        matcher: MapMatcher,
+        maxAccuracy: Double = WalkSplitter.maxAccuracy
+    ) -> [String: Date] {
+        var first: [String: Date] = [:]
+        replay(fixes: fixes, excluded: excluded, graph: graph, matcher: matcher, maxAccuracy: maxAccuracy,
+               into: CoverageStore()) { id, time in
+            if first[id] == nil { first[id] = time }
+        }
+        return first
+    }
+
+    private static func replay(fixes: [Fix], excluded: [TimeRange], graph: StreetGraph, matcher: MapMatcher,
+                               maxAccuracy: Double, into store: CoverageStore,
+                               onPass: (String, Date) -> Void = { _, _ in }) {
+        let usable = fixes
+            .filter { $0.walking && $0.accuracy >= 0 && $0.accuracy < maxAccuracy }
+            .filter { fix in !excluded.contains { $0.contains(fix.time) } }
+            .sorted { $0.time < $1.time }
+        for fix in usable {
+            guard let match = matcher.match(fix.coordinate) else { continue }
+            let length = graph.segments[match.segmentID]?.lengthMeters ?? .infinity
+            if store.recordFix(on: match.segmentID, at: fix.time, segmentLengthMeters: length) {
+                onPass(match.segmentID, fix.time)
+            }
+        }
     }
 
     /// Passes in `current` that the CSV log doesn't explain (walked before

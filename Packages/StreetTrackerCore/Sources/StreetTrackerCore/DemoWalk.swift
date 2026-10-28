@@ -14,7 +14,8 @@ public enum DemoWalk {
                              joinDistance: Double = 15) -> [Coordinate] {
         // Named streets drawn point to point; skips squares drawn as areas
         // and long tunnels, which look like jumps across houses.
-        let named = graph.segments.values.filter { segment in
+        // Sorted, so the walk is the same on every launch.
+        let named = graph.segments.values.sorted { $0.id < $1.id }.filter { segment in
             segment.name != nil && segment.points.count >= 2
                 && !(segment.name ?? "").localizedCaseInsensitiveContains("tunel")
                 && zip(segment.points, segment.points.dropFirst()).allSatisfy { Geo.distance($0, $1) <= 60 }
@@ -25,20 +26,24 @@ public enum DemoWalk {
             ? current.points : current.points.reversed()
         var walked = length(points)
         while walked < maxMeters, let end = points.last {
-            // Prefer the next segment closest to where we are.
+            // The next segment closest to where we are; ways often cross
+            // mid-way, so join at any of its points and walk to its
+            // farther end.
             let next = named
                 .filter { !used.contains($0.id) }
-                .map { segment -> (StreetSegment, Bool, Double) in
-                    let toFirst = Geo.distance(segment.points.first!, end)
-                    let toLast = Geo.distance(segment.points.last!, end)
-                    return (segment, toFirst <= toLast, min(toFirst, toLast))
+                .compactMap { segment -> (StreetSegment, Int, Double)? in
+                    let distances = segment.points.map { Geo.distance($0, end) }
+                    guard let i = distances.indices.min(by: { distances[$0] < distances[$1] }) else { return nil }
+                    return (segment, i, distances[i])
                 }
                 .filter { $0.2 <= joinDistance }
                 .min { $0.2 < $1.2 }
-            guard let (segment, forward, _) = next else { break }
+            guard let (segment, i, _) = next else { break }
             current = segment
             used.insert(segment.id)
-            let more = forward ? segment.points : segment.points.reversed()
+            let forward = Array(segment.points[i...]), backward = Array(segment.points[...i].reversed())
+            let more = length(forward) >= length(backward) ? forward : backward
+            guard more.count >= 2 else { break }
             walked += length(more)
             points += more
         }

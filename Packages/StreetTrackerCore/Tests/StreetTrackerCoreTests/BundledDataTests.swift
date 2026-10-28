@@ -15,6 +15,20 @@ final class BundledDataTests: XCTestCase {
         .deletingLastPathComponent() // repo root
         .appendingPathComponent("App/Resources")
 
+    /// The UI tests' demo walk must be long enough to show coverage.
+    func testDemoWalkOnRealDataCountsStreets() throws {
+        let streetsData = try Data(contentsOf: Self.resources.appendingPathComponent("prague_streets.json"))
+        try XCTSkipIf(streetsData.count < 1_000_000, "only the demo fixture is bundled")
+        let graph = try OSMLoader.loadGraph(fromOverpassJSON: streetsData)
+        let route = DemoWalk.route(in: graph)
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        let fixes = route.enumerated().map { Fix(time: t0.addingTimeInterval(3 * Double($0.offset)), coordinate: $0.element) }
+        let counts = CoverageRebuild.passCounts(fixes: fixes, graph: graph, matcher: MapMatcher(graph: graph))
+        print("Demo walk: \(route.count) points, \(counts.count) streets")
+        XCTAssertGreaterThan(route.count, 150)
+        XCTAssertGreaterThan(counts.count, 5)
+    }
+
     func testFullPragueDataLoadsAndIsTaggedWithDistricts() throws {
         let streetsData = try Data(contentsOf: Self.resources.appendingPathComponent("prague_streets.json"))
         let districtsData = try Data(contentsOf: Self.resources.appendingPathComponent("prague_districts.json"))

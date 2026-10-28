@@ -94,6 +94,9 @@ final class ScreenTests: XCTestCase {
             app.buttons["Tenhle úsek jsem prošel"].tap()
         } else if app.buttons["Zrušit"].exists {
             app.buttons["Zrušit"].tap()
+        } else if app.buttons["OK"].exists {
+            // Already walked street: info alert.
+            app.buttons["OK"].tap()
         }
 
         // E5: overviews.

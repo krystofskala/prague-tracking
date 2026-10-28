@@ -25,6 +25,13 @@ public enum StreetProgress {
     /// Named streets only (unnamed paths and service roads aren't streets
     /// a person ticks off), longest first within the same name.
     public static func streets(graph: StreetGraph, passCounts: [String: Int]) -> [StreetStatus] {
+        streets(graph: graph, walkedMeters: graph.segments.compactMapValues { segment in
+            (passCounts[segment.id] ?? 0) > 0 ? segment.lengthMeters : nil
+        })
+    }
+
+    /// With walked pieces (E4): `CoverageRebuild.walkedMeters`.
+    public static func streets(graph: StreetGraph, walkedMeters: [String: Double]) -> [StreetStatus] {
         var groups: [String: [StreetSegment]] = [:]
         for segment in graph.segments.values {
             guard let name = segment.name, !name.isEmpty else { continue }
@@ -36,7 +43,7 @@ public enum StreetProgress {
                 district: segments[0].district,
                 segmentIDs: segments.map(\.id).sorted(),
                 lengthMeters: segments.reduce(0) { $0 + $1.lengthMeters },
-                walkedMeters: segments.filter { (passCounts[$0.id] ?? 0) > 0 }.reduce(0) { $0 + $1.lengthMeters }
+                walkedMeters: segments.reduce(0) { $0 + (walkedMeters[$1.id] ?? 0) }
             )
         }
         .sorted { ($0.name, $0.district ?? "") < ($1.name, $1.district ?? "") }

@@ -3,6 +3,9 @@ import Foundation
 public struct MatchResult: Sendable {
     public let segmentID: String
     public let distanceMeters: Double
+    /// Where along the segment the fix lands, metres from its first point
+    /// (E4: which piece of the street was walked).
+    public var alongMeters: Double = 0
 }
 
 /// Snaps a raw GPS fix onto the nearest street segment.
@@ -37,14 +40,21 @@ public final class MapMatcher: @unchecked Sendable {
         for id in candidateIDs {
             guard let segment = graph.segments[id] else { continue }
             var minDist = Double.greatestFiniteMagnitude
+            var along = 0.0
+            var walked = 0.0
             for i in 1..<segment.points.count {
                 let a = Geo.toLocalMeters(segment.points[i - 1], origin: location)
                 let b = Geo.toLocalMeters(segment.points[i], origin: location)
-                let d = Geo.pointToSegmentDistance(p: localPoint, a: a, b: b)
-                if d < minDist { minDist = d }
+                let p = Geo.projection(p: localPoint, a: a, b: b)
+                let d = (p.x * p.x + p.y * p.y).squareRoot()
+                if d < minDist {
+                    minDist = d
+                    along = walked + ((p.x - a.x) * (p.x - a.x) + (p.y - a.y) * (p.y - a.y)).squareRoot()
+                }
+                walked += ((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y)).squareRoot()
             }
             if minDist < (best?.distanceMeters ?? .greatestFiniteMagnitude) {
-                best = MatchResult(segmentID: id, distanceMeters: minDist)
+                best = MatchResult(segmentID: id, distanceMeters: minDist, alongMeters: along)
             }
         }
 

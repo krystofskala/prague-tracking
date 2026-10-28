@@ -9,7 +9,7 @@ public struct CoverageSummary: Sendable {
     public private(set) var walkedLengthMeters: Double = 0
     private var totalByDistrict: [String: Double] = [:]
     private var walkedByDistrict: [String: Double] = [:]
-    private var walkedIDs: Set<String> = []
+    private var walked: [String: Double] = [:]
     private let segments: [String: (length: Double, district: String)]
 
     public init(graph: StreetGraph, passCounts: [String: Int]) {
@@ -23,11 +23,28 @@ public struct CoverageSummary: Sendable {
         }
     }
 
+    /// With walked pieces (E4): `CoverageRebuild.walkedMeters`.
+    public init(graph: StreetGraph, walkedMeters: [String: Double]) {
+        self.init(graph: graph, passCounts: [:])
+        for (id, meters) in walkedMeters {
+            setWalked(id, meters: meters)
+        }
+    }
+
     /// Call when a segment gets its first pass; later passes don't change coverage.
     public mutating func markWalked(_ segmentID: String) {
-        guard let segment = segments[segmentID], walkedIDs.insert(segmentID).inserted else { return }
-        walkedLengthMeters += segment.length
-        walkedByDistrict[segment.district, default: 0] += segment.length
+        guard let segment = segments[segmentID] else { return }
+        setWalked(segmentID, meters: segment.length)
+    }
+
+    /// Walked length of one segment changed (a new piece of it).
+    public mutating func setWalked(_ segmentID: String, meters: Double) {
+        guard let segment = segments[segmentID] else { return }
+        let delta = min(meters, segment.length) - (walked[segmentID] ?? 0)
+        guard delta != 0 else { return }
+        walked[segmentID] = min(meters, segment.length)
+        walkedLengthMeters += delta
+        walkedByDistrict[segment.district, default: 0] += delta
     }
 
     /// Fraction (0...1) of total street length walked at least once.

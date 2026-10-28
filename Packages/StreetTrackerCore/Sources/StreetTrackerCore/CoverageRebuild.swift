@@ -20,29 +20,68 @@ public enum CoverageRebuild {
         matcher: MapMatcher,
         maxAccuracy: Double = WalkSplitter.maxAccuracy
     ) -> [String: Int] {
+        rebuild(fixes: fixes, excluded: excluded, drawn: drawn, manualSegments: manualSegments, legacy: legacy,
+                graph: graph, matcher: matcher, maxAccuracy: maxAccuracy).passCounts
+    }
+
+    /// Pass counts and walked pieces (E4) in one replay.
+    public static func rebuild(
+        fixes: [Fix],
+        excluded: [TimeRange] = [],
+        drawn: [[Coordinate]] = [],
+        manualSegments: Set<String> = [],
+        legacy: [String: Int] = [:],
+        graph: StreetGraph,
+        matcher: MapMatcher,
+        maxAccuracy: Double = WalkSplitter.maxAccuracy
+    ) -> (passCounts: [String: Int], pieces: PieceCoverage) {
         let store = CoverageStore()
-        replay(fixes: fixes, excluded: excluded, graph: graph, matcher: matcher, maxAccuracy: maxAccuracy, into: store)
+        var pieces = PieceCoverage()
+        var tracker = PieceTracker()
+        replay(fixes: fixes, excluded: excluded, graph: graph, matcher: matcher, maxAccuracy: maxAccuracy, into: store,
+               onMatch: { match, time in _ = tracker.record(match, at: time, graph: graph, into: &pieces) })
         var counts = store.passCounts
 
         // A drawn piece walks each street it follows once.
         for piece in drawn {
             var hits: [String: Int] = [:]
-            for point in densified(piece) {
-                if let match = matcher.match(point) { hits[match.segmentID, default: 0] += 1 }
+            var drawnPieces = PieceCoverage()
+            var drawnTracker = PieceTracker()
+            for (i, point) in densified(piece).enumerated() {
+                guard let match = matcher.match(point) else { continue }
+                hits[match.segmentID, default: 0] += 1
+                _ = drawnTracker.record(match, at: Date(timeIntervalSince1970: Double(i)), graph: graph, into: &drawnPieces)
             }
             for (id, n) in hits {
                 let length = graph.segments[id]?.lengthMeters ?? .infinity
                 // Same idea as live tracking: one touch at a crossing isn't a walk.
                 if n >= 2 || length < store.shortSegmentMeters { counts[id, default: 0] += 1 }
             }
+            pieces.merge(drawnPieces)
         }
-        for id in manualSegments where (counts[id] ?? 0) == 0 {
-            counts[id] = 1
+        for id in manualSegments {
+            if (counts[id] ?? 0) == 0 { counts[id] = 1 }
+            pieces.markWhole(id)
         }
         for (id, n) in legacy where n > 0 {
             counts[id, default: 0] += n
+            pieces.markWhole(id)
         }
-        return counts
+        return (counts, pieces)
+    }
+
+    /// Walked metres of every segment with a pass: its walked pieces, or
+    /// all of it when it counts whole or has no pieces (passes from before
+    /// pieces existed). Pieces of a segment never confirmed as walked (a
+    /// crossing) don't count.
+    public static func walkedMeters(passCounts: [String: Int], pieces: PieceCoverage, graph: StreetGraph) -> [String: Double] {
+        var result: [String: Double] = [:]
+        for (id, n) in passCounts where n > 0 {
+            guard let segment = graph.segments[id] else { continue }
+            let partial = !pieces.whole.contains(id) && pieces.walked[id] != nil
+            result[id] = partial ? pieces.fraction(of: segment) * segment.lengthMeters : segment.lengthMeters
+        }
+        return result
     }
 
     /// When each segment was walked for the first time, from the log alone
@@ -57,14 +96,15 @@ public enum CoverageRebuild {
     ) -> [String: Date] {
         var first: [String: Date] = [:]
         replay(fixes: fixes, excluded: excluded, graph: graph, matcher: matcher, maxAccuracy: maxAccuracy,
-               into: CoverageStore()) { id, time in
+               into: CoverageStore(), onPass: { id, time in
             if first[id] == nil { first[id] = time }
-        }
+        })
         return first
     }
 
     private static func replay(fixes: [Fix], excluded: [TimeRange], graph: StreetGraph, matcher: MapMatcher,
                                maxAccuracy: Double, into store: CoverageStore,
+                               onMatch: (MatchResult, Date) -> Void = { _, _ in },
                                onPass: (String, Date) -> Void = { _, _ in }) {
         let usable = fixes
             .filter { $0.walking && $0.accuracy >= 0 && $0.accuracy < maxAccuracy }
@@ -72,6 +112,7 @@ public enum CoverageRebuild {
             .sorted { $0.time < $1.time }
         for fix in usable {
             guard let match = matcher.match(fix.coordinate) else { continue }
+            onMatch(match, fix.time)
             let length = graph.segments[match.segmentID]?.lengthMeters ?? .infinity
             if store.recordFix(on: match.segmentID, at: fix.time, segmentLengthMeters: length) {
                 onPass(match.segmentID, fix.time)

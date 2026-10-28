@@ -36,6 +36,13 @@ final class TrackingViewModel: ObservableObject {
     @Published private(set) var walkMeta: [String: WalkMeta] = [:]
     /// Streets marked as walked by hand (long press on the map).
     @Published private(set) var manualStreets: Set<String> = []
+    /// E5: challenges and the monthly goal.
+    @Published private(set) var goals = Goals()
+    /// E5: what was walked when (nil until computed, `refreshStats`).
+    @Published private(set) var activity: ActivityLog?
+    @Published private(set) var streets: [StreetStatus] = []
+    /// Edited walks for the heatmap.
+    @Published private(set) var editedWalks: [Walk] = []
     /// Name of the Obsidian folder, nil until one is picked.
     @Published private(set) var obsidianFolderName: String?
     /// One line about the last export / backup / import, for the settings.
@@ -145,6 +152,7 @@ final class TrackingViewModel: ObservableObject {
         }
         walkMeta = walkLibrary.loadMeta()
         manualStreets = walkLibrary.loadManualStreets()
+        goals = walkLibrary.loadGoals()
         obsidianFolderName = obsidian.folder?.lastPathComponent
     }
 
@@ -262,9 +270,47 @@ final class TrackingViewModel: ObservableObject {
         }
     }
 
+    // MARK: Overviews (E5)
+
+    var totalStreetMeters: Double { coverageSummary.totalLengthMeters }
+
+    /// Dates the first pass of every segment from the log and groups
+    /// segments into streets. Replays every fix, so off the main thread.
+    func refreshStats() {
+        guard let matcher else { return }
+        let library = walkLibrary, graph = graph, meta = walkMeta, counts = passCounts
+        Task {
+            let (log, streets, edited) = await Task.detached(priority: .userInitiated) {
+                let fixes = library.loadFixes()
+                let walks = WalkSplitter.walks(from: fixes)
+                let edits = walks.compactMap { walk in meta[walk.id]?.edit.map { (walk, $0) } }
+                let legacy = library.loadLegacy() ?? [:]
+                // A street walked before the log isn't new when walked again.
+                let first = CoverageRebuild.firstPasses(
+                    fixes: fixes,
+                    excluded: edits.flatMap { $0.1.excludedRanges(of: $0.0) },
+                    graph: graph,
+                    matcher: matcher
+                ).filter { legacy[$0.key] == nil }
+                let edited = walks.compactMap { $0.applying(meta[$0.id]?.edit) }
+                return (ActivityLog(walks: edited, firstPasses: first, passCounts: counts, graph: graph),
+                        StreetProgress.streets(graph: graph, passCounts: counts),
+                        edited)
+            }.value
+            activity = log
+            self.streets = streets
+            editedWalks = edited
+        }
+    }
+
+    func saveGoals(_ goals: Goals) {
+        self.goals = goals
+        walkLibrary.saveGoals(goals)
+    }
+
     func backup() {
         let files = walkLibrary.csvFiles + [persistence.fileURL, walkLibrary.metaFile,
-                                            walkLibrary.manualFile, walkLibrary.legacyFile]
+                                            walkLibrary.manualFile, walkLibrary.legacyFile, walkLibrary.goalsFile]
         dataStatus = obsidian.backup(files: files)
             ? "Záloha uložená do složky zaloha"
             : "Zálohu se nepovedlo uložit, vyber složku Obsidianu znovu."
@@ -281,6 +327,7 @@ final class TrackingViewModel: ObservableObject {
             case "walk-meta.json": return walkLibrary.metaFile
             case "rucne-prosle-ulice.json": return walkLibrary.manualFile
             case "pokryti-pred-csv.json": return walkLibrary.legacyFile
+            case "vyzvy.json": return walkLibrary.goalsFile
             default:
                 guard name.hasSuffix(".csv") else { return nil }
                 return walkLibrary.trasyDir.appendingPathComponent(name)
@@ -295,6 +342,7 @@ final class TrackingViewModel: ObservableObject {
         publishCoverage()
         walkMeta = walkLibrary.loadMeta()
         manualStreets = walkLibrary.loadManualStreets()
+        goals = walkLibrary.loadGoals()
         dataStatus = "Obnoveno souborů: \(restored)"
         trackLog.appendEvent("obnova", dataStatus ?? "")
         syncWalks()

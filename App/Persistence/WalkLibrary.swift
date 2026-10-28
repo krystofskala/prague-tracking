@@ -9,6 +9,7 @@ final class WalkLibrary: @unchecked Sendable {
     private let metaURL: URL
     let manualFile: URL
     let legacyFile: URL
+    let goalsFile: URL
 
     init() {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -19,6 +20,7 @@ final class WalkLibrary: @unchecked Sendable {
         metaURL = support.appendingPathComponent("walk-meta.json")
         manualFile = support.appendingPathComponent("rucne-prosle-ulice.json")
         legacyFile = support.appendingPathComponent("pokryti-pred-csv.json")
+        goalsFile = support.appendingPathComponent("vyzvy.json")
     }
 
     /// Fix CSVs: `RRRR-MM-DD.csv` and everything in `import/`.
@@ -74,6 +76,16 @@ final class WalkLibrary: @unchecked Sendable {
         try? data.write(to: legacyFile, options: .atomic)
     }
 
+    func loadGoals() -> Goals {
+        guard let data = try? Data(contentsOf: goalsFile) else { return Goals() }
+        return (try? JSONDecoder().decode(Goals.self, from: data)) ?? Goals()
+    }
+
+    func saveGoals(_ goals: Goals) {
+        guard let data = try? JSONEncoder().encode(goals) else { return }
+        try? data.write(to: goalsFile, options: .atomic)
+    }
+
     func loadMeta() -> [String: WalkMeta] {
         guard let data = try? Data(contentsOf: metaURL) else { return [:] }
         return (try? JSONDecoder().decode([String: WalkMeta].self, from: data)) ?? [:]
@@ -108,4 +120,11 @@ final class WalkLibrary: @unchecked Sendable {
         try? Data((TrackCSV.header + "\n" + body + "\n").utf8).write(to: url, options: .atomic)
         return fixes
     }
+}
+
+/// Challenges and the monthly goal (E5). No goal is set by default.
+struct Goals: Codable, Equatable {
+    var challenges: [Challenge] = []
+    /// New kilometres a month; nil = off.
+    var monthlyNewKm: Double?
 }

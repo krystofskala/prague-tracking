@@ -88,6 +88,39 @@ final class ScreenTests: XCTestCase {
             app.buttons["Zrušit"].tap()
         }
 
+        // E5: overviews.
+        app.buttons["Přehledy"].tap()
+        XCTAssertTrue(app.navigationBars["Přehledy"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Naplánuj procházku po neprošlých"].waitForExistence(timeout: 60), "stats computed from the log")
+        screenshot("9a-neprosle-ulice")
+        app.buttons["Naplánuj procházku po neprošlých"].tap()
+        XCTAssertTrue(app.navigationBars["Plán procházky"].waitForExistence(timeout: 10))
+        _ = XCTWaiter.wait(for: [XCTestExpectation(description: "tiles")], timeout: 4)
+        screenshot("9b-plan-prochazky")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        app.buttons["Výzvy"].tap()
+        app.switches.firstMatch.tap()
+        app.buttons["Nová výzva"].tap()
+        let challengeName = app.textFields["nazev-vyzvy"]
+        XCTAssertTrue(challengeName.waitForExistence(timeout: 10))
+        challengeName.tap()
+        challengeName.typeText("Staré Město do Vánoc")
+        screenshot("9c-nova-vyzva")
+        app.buttons["Přidat"].tap()
+        XCTAssertTrue(app.staticTexts["Staré Město do Vánoc"].waitForExistence(timeout: 10))
+        screenshot("9d-vyzvy-a-mesicni-cil")
+
+        app.buttons["Odznaky"].tap()
+        XCTAssertTrue(app.staticTexts["První procházka"].waitForExistence(timeout: 10))
+        screenshot("9e-odznaky")
+        app.buttons["Čtvrti"].tap()
+        screenshot("9f-ctvrti")
+        app.buttons["Mapa"].tap()
+        _ = XCTWaiter.wait(for: [XCTestExpectation(description: "tiles")], timeout: 4)
+        screenshot("9g-heatmapa")
+        closeSheet()
+
         app.buttons["Data"].tap()
         XCTAssertTrue(app.buttons["Vybrat složku v trezoru"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Importovat GPX…"].exists)

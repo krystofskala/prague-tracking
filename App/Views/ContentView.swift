@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var showingSuggestions = false
     @State private var showingWalks = false
     @State private var showingData = false
+    @State private var showingStats = false
     /// Long-pressed street, asking "prošel jsem ji?".
     @State private var pressedStreet: StreetSegment?
 
@@ -66,6 +67,7 @@ struct ContentView: View {
                     }
                     .disabled(viewModel.lastLocation == nil)
                     Spacer()
+                    Button("Přehledy") { showingStats = true }
                     Button("Procházky") { showingWalks = true }
                     Button("Data") { showingData = true }
                 }
@@ -84,6 +86,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingWalks) {
             WalksView().environmentObject(viewModel)
+        }
+        .sheet(isPresented: $showingStats) {
+            StatsView().environmentObject(viewModel)
         }
         .sheet(isPresented: $showingData) {
             DataView().environmentObject(viewModel)

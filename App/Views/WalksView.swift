@@ -24,6 +24,7 @@ struct WalksView: View {
                                 WalkRow(walk: walk, edited: viewModel.edited(walk),
                                         meta: viewModel.walkMeta[walk.id] ?? WalkMeta())
                             }
+                            .accessibilityIdentifier("prochazka")
                         }
                     }
                 }

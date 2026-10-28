@@ -38,7 +38,8 @@ final class ScreenTests: XCTestCase {
 
         app.buttons["Procházky"].tap()
         XCTAssertTrue(app.navigationBars["Procházky"].waitForExistence(timeout: 10))
-        let firstWalk = app.cells.firstMatch
+        // Not app.cells: the month header is a cell too.
+        let firstWalk = app.descendants(matching: .any).matching(identifier: "prochazka").firstMatch
         XCTAssertTrue(firstWalk.waitForExistence(timeout: 20), "the demo walk is listed")
         screenshot("5-seznam-prochazek")
         firstWalk.tap()

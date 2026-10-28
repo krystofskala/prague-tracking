@@ -30,14 +30,14 @@ struct NewDrawnWalkView: View {
                     strokes.append(stroke)
                 }
                 Form {
-                    DatePicker("Začátek", selection: $start, in: ...Date().addingTimeInterval(-lengthKm * 1000 / DrawnWalk.speed))
+                    DatePicker("Začátek", selection: $start, in: ...Date().addingTimeInterval(-DrawnWalk.duration(of: strokes)))
                     Picker("Prst", selection: $drawing) {
                         Text("Kreslí").tag(true)
                         Text("Posouvá mapu").tag(false)
                     }
                     .pickerStyle(.segmented)
                     HStack {
-                        Text(String(format: "%.2f km · asi %.0f min", lengthKm, lengthKm * 1000 / DrawnWalk.speed / 60))
+                        Text(String(format: "%.2f km · asi %.0f min", lengthKm, DrawnWalk.duration(of: strokes) / 60))
                             .monospacedDigit()
                         Spacer()
                         Button("Vrátit tah") { strokes.removeLast() }

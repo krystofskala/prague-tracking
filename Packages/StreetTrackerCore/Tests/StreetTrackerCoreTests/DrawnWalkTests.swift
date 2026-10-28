@@ -29,6 +29,20 @@ final class DrawnWalkTests: XCTestCase {
         XCTAssertEqual(gap, Geo.distance(b, c) / DrawnWalk.speed, accuracy: 0.5)
     }
 
+    func testFarSecondStrokeStaysInTheSameWalk() {
+        // 2 km away: walking there would take 25 min, more than a pause.
+        let far = Coordinate(latitude: 50.021, longitude: 14.4)
+        let far2 = Coordinate(latitude: 50.024, longitude: 14.4)
+        let fixes = DrawnWalk.fixes(strokes: [[a, b], [far, far2]], start: start)
+        XCTAssertEqual(WalkSplitter.walks(from: fixes).count, 1)
+        XCTAssertEqual(DrawnWalk.duration(of: [[a, b], [far, far2]]), fixes.last!.time.timeIntervalSince(start), accuracy: 0.01)
+    }
+
+    func testRepeatedPointGivesNoDuplicateTime() {
+        let fixes = DrawnWalk.fixes(strokes: [[a, a, b]], start: start)
+        XCTAssertEqual(Set(fixes.map(\.time)).count, fixes.count)
+    }
+
     func testRebuildCountsTheDrawnStreet() {
         let street = StreetSegment(id: "s", name: "s", points: [a, b], lengthMeters: Geo.distance(a, b), district: "Praha 1")
         let graph = StreetGraph(segments: ["s": street])
